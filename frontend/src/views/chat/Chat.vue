@@ -16,11 +16,17 @@
 
         <template v-else>
           <div v-for="m in chat.messages" :key="m.id || m._tmp" :class="['msg', m.role]">
-            <div v-if="m.role === 'assistant'" class="avatar bot">
+            <div v-if="m.role === 'assistant'" :class="['avatar', 'bot', { 'is-thinking': isWaiting(m) }]">
               <span class="dot dot-1" /><span class="dot dot-2" />
               <span class="dot dot-3" /><span class="dot dot-4" />
             </div>
             <div class="bubble-stack">
+              <!-- waiting indicator: shown only until first content arrives -->
+              <div v-if="isWaiting(m)" class="thinking-pill">
+                <span class="thinking-text">{{ thinkingLabel(m) }}</span>
+                <span class="thinking-dots"><span /><span /><span /></span>
+              </div>
+
               <!-- meta: 当前回答用的 agent / model -->
               <div v-if="m.role === 'assistant' && m._meta" class="msg-meta">
                 <span>{{ m._meta.agent_name }}</span>
@@ -65,6 +71,16 @@
                   :key="fi + (f.name || '')"
                   :file="f"
                   @preview="openPreview"
+                />
+              </div>
+
+              <!-- UI Schema surfaces (interactive components) -->
+              <div v-if="(m.content_json?.uis?.length) || m._uis?.length" class="ui-block">
+                <MessageDispatcher
+                  v-for="(s, ui) in (m._uis?.length ? m._uis : m.content_json.uis)"
+                  :key="s.surface_id || ui"
+                  :schema="s"
+                  :on-agent-call="onAgentCall"
                 />
               </div>
 
@@ -153,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, reactive, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 import { useChat } from '@/stores/chat'
@@ -161,6 +177,7 @@ import MarkdownIt from 'markdown-it'
 import WidgetRenderer from '@/components/WidgetRenderer.vue'
 import FileCard from '@/components/FileCard.vue'
 import PreviewPanel from '@/components/PreviewPanel.vue'
+import MessageDispatcher from '@/agent-ui/engine/MessageDispatcher.vue'
 import { parseMessageContent } from '@/lib/widget-parser'
 
 const md = new MarkdownIt({ breaks: true, linkify: true })
@@ -257,6 +274,57 @@ function openPreview(f: any) {
   previewFile.value = { ...f, download_url: url }
 }
 
+// Bridge for UI Schema -> Agent. Sends a [UI_ACTION] message that the backend
+// recognises in chat.py and routes directly to the tool, bypassing LLM.
+// We do NOT push a user bubble for it — UI actions are continuations, not utterances.
+async function onAgentCall(text: string) {
+  if (!chat.currentAgent || sending.value) return
+  if (!chat.currentConvId) await chat.newConv()
+
+  const placeholder: any = reactive({
+    _tmp: Date.now(), role: 'assistant',
+    content_json: { text: '' }, tool_calls_json: null,
+    _meta: null, _thinking: '', _steps: [], _stepIndex: {}, _files: [], _uis: [],
+    _streaming: true,
+  })
+  chat.messages.push(placeholder)
+  sending.value = true
+  await scrollBottom()
+
+  const token = localStorage.getItem('access_token')
+  try {
+    const resp = await fetch(`/api/conversations/${chat.currentConvId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ content: text, file_ids: [] }),
+    })
+    if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n\n')
+      buf = lines.pop() || ''
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue
+        try {
+          const json = JSON.parse(line.slice(5).trim())
+          applyEvent(placeholder, json)
+        } catch {}
+        await scrollBottom()
+      }
+    }
+  } catch (e: any) {
+    placeholder.content_json.text += `\n\n[网络错误] ${e.message}`
+  } finally {
+    placeholder._streaming = false
+    sending.value = false
+  }
+}
+
 function renderContent(m: any) {
   const text = m.content_json?.text || ''
   return md.render(text)
@@ -289,6 +357,24 @@ function formatStepData(v: any) {
     try { return JSON.stringify(JSON.parse(v), null, 2) } catch { return v }
   }
   return JSON.stringify(v, null, 2)
+}
+
+// True while we've sent the question but no visible content has come back yet.
+// Hides as soon as text / thinking / tool steps / files / UIs appear.
+function isWaiting(m: any): boolean {
+  if (m.role !== 'assistant' || !m._streaming) return false
+  if (m.content_json?.text) return false
+  if (m._thinking) return false
+  if (m._steps?.length) return false
+  if (m._files?.length) return false
+  if (m._uis?.length) return false
+  return true
+}
+
+// Show a slightly more informative label once the model has acknowledged
+// (we got `meta`) but before any visible token.
+function thinkingLabel(m: any): string {
+  return m._meta ? '正在思考' : '正在连接智能体'
 }
 
 async function scrollBottom() {
@@ -326,7 +412,7 @@ async function send() {
   chat.messages.push({
     _tmp: Date.now() + 1, role: 'assistant',
     content_json: { text: '' }, tool_calls_json: null,
-    _meta: null, _thinking: '', _steps: [], _stepIndex: {} as Record<string, number>, _files: [],
+    _meta: null, _thinking: '', _steps: [], _stepIndex: {} as Record<string, number>, _files: [], _uis: [],
     _streaming: true,
   })
   // IMPORTANT: keep a reference to the *reactive proxy* (last array element),
@@ -420,10 +506,11 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
       if (s._start) s.duration_ms = Math.round(performance.now() - s._start)
     }
   } else if (type === 'file') {
-    // Reassign array (not just push) so Vue reactivity reliably triggers,
-    // even if the original placeholder was constructed with an inline literal.
     const next = Array.isArray(m._files) ? [...m._files, data] : [data]
     m._files = next
+  } else if (type === 'ui') {
+    const next = Array.isArray(m._uis) ? [...m._uis, data] : [data]
+    m._uis = next
   } else if (type === 'error') {
     m.content_json.text += `\n\n[错误] ${data.message}`
   }
@@ -463,6 +550,50 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 .avatar.bot .dot { border-radius: 50%; }
 .avatar.bot .dot-1 { background:#4285f4 } .avatar.bot .dot-2 { background:#ea4335 }
 .avatar.bot .dot-3 { background:#fbbc04 } .avatar.bot .dot-4 { background:#34a853 }
+
+/* Waiting state: avatar pulses, dots cycle */
+.avatar.bot.is-thinking {
+  border-color: var(--m-primary);
+  box-shadow: 0 0 0 0 var(--m-primary-soft);
+  animation: avatar-glow 1.6s ease-in-out infinite;
+}
+.avatar.bot.is-thinking .dot { animation: dot-pulse 1.2s ease-in-out infinite; }
+.avatar.bot.is-thinking .dot-1 { animation-delay: 0s; }
+.avatar.bot.is-thinking .dot-2 { animation-delay: .15s; }
+.avatar.bot.is-thinking .dot-3 { animation-delay: .45s; }
+.avatar.bot.is-thinking .dot-4 { animation-delay: .3s; }
+@keyframes dot-pulse {
+  0%, 100% { transform: scale(0.85); opacity: .55; }
+  50%      { transform: scale(1.15); opacity: 1; }
+}
+@keyframes avatar-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(66,133,244,.18); }
+  50%      { box-shadow: 0 0 0 4px rgba(66,133,244,.06); }
+}
+
+/* Thinking pill — shown next to avatar until first content arrives */
+.thinking-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: var(--m-bg-soft);
+  border-radius: var(--m-radius-pill);
+  font-size: 13px; color: var(--m-text-secondary);
+  align-self: flex-start;
+  width: fit-content;
+}
+.thinking-text { font-weight: 500; }
+.thinking-dots { display: inline-flex; gap: 3px; }
+.thinking-dots span {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor;
+  animation: dot-bounce 1.2s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: .15s; }
+.thinking-dots span:nth-child(3) { animation-delay: .3s; }
+@keyframes dot-bounce {
+  0%, 80%, 100% { opacity: .3; transform: translateY(0); }
+  40%           { opacity: 1; transform: translateY(-3px); }
+}
 
 .bubble {
   max-width: 100%; padding: 12px 16px;

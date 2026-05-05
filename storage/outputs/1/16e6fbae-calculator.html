@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>现代计算器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #e8f0fe 0%, #f8f9fa 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .calculator {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(26, 115, 232, 0.15);
+            padding: 24px;
+            width: 320px;
+        }
+        
+        .display {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            text-align: right;
+            border: 1px solid #e8eaed;
+        }
+        
+        .display .expression {
+            font-size: 14px;
+            color: #5f6368;
+            min-height: 20px;
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+        
+        .display .result {
+            font-size: 36px;
+            font-weight: 500;
+            color: #202124;
+            min-height: 44px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        
+        .btn {
+            height: 56px;
+            border: none;
+            border-radius: 12px;
+            font-size: 20px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-number {
+            background: #fafbfc;
+            color: #202124;
+            border: 1px solid #e8eaed;
+        }
+        
+        .btn-number:hover {
+            background: #f1f3f4;
+        }
+        
+        .btn-operator {
+            background: #e8f0fe;
+            color: #1a73e8;
+            border: 1px solid #aecbfa;
+        }
+        
+        .btn-operator:hover {
+            background: #d2e3fc;
+        }
+        
+        .btn-operator.active {
+            background: #1a73e8;
+            color: #ffffff;
+        }
+        
+        .btn-function {
+            background: #fce8e6;
+            color: #d93025;
+            border: 1px solid #f6aea9;
+        }
+        
+        .btn-function:hover {
+            background: #fad2cf;
+        }
+        
+        .btn-equals {
+            background: #1a73e8;
+            color: #ffffff;
+            grid-column: span 2;
+            border: 1px solid #1967d2;
+        }
+        
+        .btn-equals:hover {
+            background: #1967d2;
+        }
+        
+        .btn-zero {
+            grid-column: span 2;
+        }
+        
+        .history {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #e8eaed;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+        
+        .history-title {
+            font-size: 12px;
+            color: #5f6368;
+            margin-bottom: 8px;
+        }
+        
+        .history-item {
+            font-size: 13px;
+            color: #3c4043;
+            padding: 4px 0;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .history-item:hover {
+            color: #1a73e8;
+        }
+        
+        .history-expr {
+            color: #5f6368;
+        }
+        
+        .history-result {
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="calculator">
+        <div class="display">
+            <div class="expression" id="expression"></div>
+            <div class="result" id="result">0</div>
+        </div>
+        
+        <div class="buttons">
+            <button class="btn btn-function" data-action="clear">AC</button>
+            <button class="btn btn-function" data-action="delete">⌫</button>
+            <button class="btn btn-function" data-action="percent">%</button>
+            <button class="btn btn-operator" data-action="operator" data-value="/">÷</button>
+            
+            <button class="btn btn-number" data-number="7">7</button>
+            <button class="btn btn-number" data-number="8">8</button>
+            <button class="btn btn-number" data-number="9">9</button>
+            <button class="btn btn-operator" data-action="operator" data-value="*">×</button>
+            
+            <button class="btn btn-number" data-number="4">4</button>
+            <button class="btn btn-number" data-number="5">5</button>
+            <button class="btn btn-number" data-number="6">6</button>
+            <button class="btn btn-operator" data-action="operator" data-value="-">−</button>
+            
+            <button class="btn btn-number" data-number="1">1</button>
+            <button class="btn btn-number" data-number="2">2</button>
+            <button class="btn btn-number" data-number="3">3</button>
+            <button class="btn btn-operator" data-action="operator" data-value="+">+</button>
+            
+            <button class="btn btn-number btn-zero" data-number="0">0</button>
+            <button class="btn btn-number" data-number=".">.</button>
+            <button class="btn btn-equals" data-action="equals">=</button>
+        </div>
+        
+        <div class="history" id="history">
+            <div class="history-title">历史记录</div>
+            <div id="historyList"></div>
+        </div>
+    </div>
+
+    <script>
+        // 计算器状态
+        let currentValue = '0';
+        let previousValue = '';
+        let operator = null;
+        let shouldResetScreen = false;
+        let history = [];
+
+        // DOM 元素
+        const expressionEl = document.getElementById('expression');
+        const resultEl = document.getElementById('result');
+        const historyListEl = document.getElementById('historyList');
+
+        // 更新显示
+        function updateDisplay() {
+            resultEl.textContent = currentValue;
+            if (operator && previousValue) {
+                const opSymbol = operator === '*' ? '×' : operator === '/' ? '÷' : operator;
+                expressionEl.textContent = `${previousValue} ${opSymbol}`;
+            } else {
+                expressionEl.textContent = '';
+            }
+        }
+
+        // 格式化数字显示
+        function formatNumber(num) {
+            if (num.length > 12) {
+                return parseFloat(num).toExponential(6);
+            }
+            return num;
+        }
+
+        // 处理数字输入
+        function inputNumber(num) {
+            if (shouldResetScreen) {
+                currentValue = num === '.' ? '0.' : num;
+                shouldResetScreen = false;
+            } else {
+                if (num === '.' && currentValue.includes('.')) return;
+                if (currentValue === '0' && num !== '.') {
+                    currentValue = num;
+                } else {
+                    currentValue += num;
+                }
+            }
+            updateDisplay();
+        }
+
+        // 选择操作符
+        function selectOperator(op) {
+            if (operator && !shouldResetScreen) {
+                calculate();
+            }
+            previousValue = currentValue;
+            operator = op;
+            shouldResetScreen = true;
+            updateDisplay();
+            highlightOperator(op);
+        }
+
+        // 高亮当前操作符
+        function highlightOperator(op) {
+            document.querySelectorAll('.btn-operator').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.value === op) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+
+        // 清除高亮
+        function clearHighlight() {
+            document.querySelectorAll('.btn-operator').forEach(btn => {
+                btn.classList.remove('active');
+            });
+        }
+
+        // 执行计算
+        function calculate() {
+            if (!operator || !previousValue) return;
+            
+            const prev = parseFloat(previousValue);
+            const current = parseFloat(currentValue);
+            let result;
+
+            switch (operator) {
+                case '+': result = prev + current; break;
+                case '-': result = prev - current; break;
+                case '*': result = prev * current; break;
+                case '/': result = current === 0 ? 'Error' : prev / current; break;
+                default: return;
+            }
+
+            const resultStr = result === 'Error' ? result : String(result).slice(0, 12);
+            
+            // 添加到历史记录
+            const opSymbol = operator === '*' ? '×' : operator === '/' ? '÷' : operator;
+            addToHistory(`${previousValue} ${opSymbol} ${currentValue}`, resultStr);
+            
+            currentValue = resultStr;
+            operator = null;
+            previousValue = '';
+            shouldResetScreen = true;
+            clearHighlight();
+            updateDisplay();
+        }
+
+        // 添加到历史记录
+        function addToHistory(expr, res) {
+            history.unshift({ expr, res });
+            if (history.length > 10) history.pop();
+            renderHistory();
+        }
+
+        // 渲染历史记录
+        function renderHistory() {
+            historyListEl.innerHTML = history.map(item => `
+                <div class="history-item" onclick="loadHistory('${item.res}')">
+                    <span class="history-expr">${item.expr} =</span>
+                    <span class="history-result">${item.res}</span>
+                </div>
+            `).join('');
+        }
+
+        // 从历史加载
+        function loadHistory(val) {
+            if (val !== 'Error') {
+                currentValue = val;
+                shouldResetScreen = true;
+                updateDisplay();
+            }
+        }
+
+        // 清除
+        function clear() {
+            currentValue = '0';
+            previousValue = '';
+            operator = null;
+            shouldResetScreen = false;
+            clearHighlight();
+            updateDisplay();
+        }
+
+        // 删除最后一位
+        function deleteLast() {
+            if (currentValue.length > 1) {
+                currentValue = currentValue.slice(0, -1);
+            } else {
+                currentValue = '0';
+            }
+            updateDisplay();
+        }
+
+        // 百分比
+        function percent() {
+            currentValue = String(parseFloat(currentValue) / 100);
+            updateDisplay();
+        }
+
+        // 键盘事件
+        document.addEventListener('keydown', (e) => {
+            if (e.key >= '0' && e.key <= '9') inputNumber(e.key);
+            if (e.key === '.') inputNumber('.');
+            if (e.key === '+') selectOperator('+');
+            if (e.key === '-') selectOperator('-');
+            if (e.key === '*') selectOperator('*');
+            if (e.key === '/') { e.preventDefault(); selectOperator('/'); }
+            if (e.key === 'Enter' || e.key === '=') calculate();
+            if (e.key === 'Escape') clear();
+            if (e.key === 'Backspace') deleteLast();
+        });
+
+        // 按钮点击事件
+        document.querySelectorAll('.btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const number = btn.dataset.number;
+                const action = btn.dataset.action;
+                const value = btn.dataset.value;
+
+                if (number !== undefined) {
+                    inputNumber(number);
+                } else if (action === 'operator') {
+                    selectOperator(value);
+                } else if (action === 'equals') {
+                    calculate();
+                } else if (action === 'clear') {
+                    clear();
+                } else if (action === 'delete') {
+                    deleteLast();
+                } else if (action === 'percent') {
+                    percent();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -76,8 +76,9 @@ function _measure(){
       }
     }catch(e){}
   }
-  // 12px safety margin avoids hairline cropping at the bottom.
-  return h+12;
+  // No safety margin here — adding one creates a feedback loop with
+  // root min-height: 100%. The parent applies its own dead-zone.
+  return h;
 }
 function _h(){
   if(_t)clearTimeout(_t);
@@ -204,12 +205,13 @@ svg > rect:first-child[fill="black"] {
 html, body { margin: 0; padding: 0; background: #ffffff; color: #3c4043;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 14px; line-height: 1.6; }
-html, body { height: 100%; }
-#__root { width: 100%; min-height: 100%; height: fit-content; background: transparent; }
+html, body { height: auto; }
+#__root { width: 100%; height: fit-content; background: transparent; }
 
 /* While streaming, force every direct child of #__root to fill the available
    width. We do NOT force a height — that lets the iframe naturally grow as
    the SVG/HTML content gets longer (ResizeObserver reports the true height). */
+body.is-streaming #__root { min-height: 100%; }
 body.is-streaming #__root > svg {
   width: 100% !important;
   height: auto !important;

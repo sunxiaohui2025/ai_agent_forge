@@ -301,7 +301,10 @@ async def send_message(
     # ---- Security: input filter ----
     from ..core.security_rules import scan_user_input
     from ..db.models import AuditLog
-    hits = scan_user_input(payload.content)
+    # [UI_ACTION] route: structured user action from a rendered UI Schema.
+    # Bypass scan_user_input — the payload is JSON we authored, not free text.
+    is_ui_action = payload.content.startswith("[UI_ACTION]")
+    hits = [] if is_ui_action else scan_user_input(payload.content)
     if hits:
         # Persist a high-signal audit record so admins can review attempted attacks
         db.add(AuditLog(
@@ -370,30 +373,74 @@ async def send_message(
             thinking_parts: list[str] = []
             tool_traces: list[dict] = []
             saved_files: list[dict] = []
+            saved_uis: list[dict] = []
             tokens_in = tokens_out = latency = 0
             status_str = "ok"
             err = None
             try:
-                async for ev in runner.stream(payload.content, files):
-                    payload_json = {"type": ev.type, "data": ev.data}
-                    yield f"data: {json.dumps(payload_json, ensure_ascii=False)}\n\n"
-                    # cooperative yield so each chunk is flushed to client immediately
-                    await asyncio.sleep(0)
-                    if ev.type == "text":
-                        assistant_text_parts.append(ev.data.get("text", ""))
-                    elif ev.type == "thinking":
-                        thinking_parts.append(ev.data.get("text", ""))
-                    elif ev.type in ("tool_use", "tool_result"):
-                        tool_traces.append(payload_json)
-                    elif ev.type == "file":
-                        saved_files.append(ev.data if isinstance(ev.data, dict) else {})
-                    elif ev.type == "done":
-                        tokens_in = ev.data.get("tokens_in", 0)
-                        tokens_out = ev.data.get("tokens_out", 0)
-                        latency = ev.data.get("latency_ms", 0)
-                    elif ev.type == "error":
-                        status_str = "error"
-                        err = ev.data.get("message")
+                # [UI_ACTION] short-circuit: parse + validate against this agent's
+                # tool whitelist, then call directly without LLM.
+                if is_ui_action:
+                    from ..ui_schema.types import whitelist_tool_names
+                    import re as _re
+                    m = _re.match(r"\[UI_ACTION\]\s*tool=([^\s]+)\s+params=(.*)$",
+                                  payload.content, _re.DOTALL)
+                    if not m:
+                        yield f"data: {json.dumps({'type':'error','data':{'message':'UI_ACTION 格式错误'}}, ensure_ascii=False)}\n\n"
+                    else:
+                        ui_tool = m.group(1).strip()
+                        try:
+                            ui_params = json.loads(m.group(2))
+                            if not isinstance(ui_params, dict):
+                                ui_params = {"value": ui_params}
+                        except Exception:
+                            ui_params = {"raw": m.group(2)}
+                        # Build whitelist: skill codes + mcp__<server>__* prefixes + builtins
+                        allowed = whitelist_tool_names(ctx.skills, mcp_tool_routes={})
+                        is_allowed = (
+                            ui_tool in allowed
+                            or any(ui_tool.startswith(f"mcp__{mcp.name}__") for mcp in ctx.mcps)
+                        )
+                        if not is_allowed:
+                            yield f"data: {json.dumps({'type':'error','data':{'message':f'工具 {ui_tool} 不在该智能体的允许列表'}}, ensure_ascii=False)}\n\n"
+                        else:
+                            async for ev in runner.exec_ui_action(ui_tool, ui_params):
+                                payload_json = {"type": ev.type, "data": ev.data}
+                                yield f"data: {json.dumps(payload_json, ensure_ascii=False)}\n\n"
+                                await asyncio.sleep(0)
+                                if ev.type == "ui":
+                                    saved_uis.append(ev.data if isinstance(ev.data, dict) else {})
+                                elif ev.type == "tool_use" or ev.type == "tool_result":
+                                    tool_traces.append(payload_json)
+                                elif ev.type == "file":
+                                    saved_files.append(ev.data if isinstance(ev.data, dict) else {})
+                                elif ev.type == "done":
+                                    tokens_in = ev.data.get("tokens_in", 0)
+                                    tokens_out = ev.data.get("tokens_out", 0)
+                                    latency = ev.data.get("latency_ms", 0)
+                else:
+                    async for ev in runner.stream(payload.content, files):
+                        payload_json = {"type": ev.type, "data": ev.data}
+                        yield f"data: {json.dumps(payload_json, ensure_ascii=False)}\n\n"
+                        # cooperative yield so each chunk is flushed to client immediately
+                        await asyncio.sleep(0)
+                        if ev.type == "text":
+                            assistant_text_parts.append(ev.data.get("text", ""))
+                        elif ev.type == "thinking":
+                            thinking_parts.append(ev.data.get("text", ""))
+                        elif ev.type in ("tool_use", "tool_result"):
+                            tool_traces.append(payload_json)
+                        elif ev.type == "file":
+                            saved_files.append(ev.data if isinstance(ev.data, dict) else {})
+                        elif ev.type == "ui":
+                            saved_uis.append(ev.data if isinstance(ev.data, dict) else {})
+                        elif ev.type == "done":
+                            tokens_in = ev.data.get("tokens_in", 0)
+                            tokens_out = ev.data.get("tokens_out", 0)
+                            latency = ev.data.get("latency_ms", 0)
+                        elif ev.type == "error":
+                            status_str = "error"
+                            err = ev.data.get("message")
             finally:
                 # Persist assistant message + call log
                 content_payload = {"text": "".join(assistant_text_parts)}
@@ -401,6 +448,8 @@ async def send_message(
                     content_payload["thinking"] = "".join(thinking_parts)
                 if saved_files:
                     content_payload["files"] = saved_files
+                if saved_uis:
+                    content_payload["uis"] = saved_uis
                 am = Message(
                     conversation_id=cid, role="assistant",
                     content_json=content_payload,

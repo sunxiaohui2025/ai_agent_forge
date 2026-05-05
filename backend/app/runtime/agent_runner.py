@@ -23,25 +23,101 @@ from .widget_guidelines import (
     handle_widget_tool_call,
 )
 
-# Hard override: prevents skills like `jiagoutu` from making the model
-# generate SVG via Bash heredoc + file write. The widget fence is the ONLY
-# valid output channel for visualizations.
-_WIDGET_OVERRIDE_NOTICE = """
-## ⚠️ 可视化输出强制约束（覆盖所有其他 Skill 的指令）
+# Widget guidance — Skills take priority. Only injected when the user is
+# asking for a visualization AND the agent has no skills loaded that might
+# already handle it (e.g. `jiagoutu`). When skills are present, the model
+# follows the skill's own SKILL.md instructions; widgets are the fallback
+# path for agents that have no drawing skill configured.
+_WIDGET_GUIDANCE = """
+## 可视化输出指引（在没有更合适的 Skill 时使用）
 
-如果用户请求任何可视化（流程图 / 架构图 / 示意图 / SVG / 图表），你**必须**：
+当用户请求可视化（流程图 / 架构图 / 示意图 / SVG / 图表 / HTML 计算器 / 表单），
+且你**没有更合适的 Skill** 来完成此任务时，请使用 `show-widget` 围栏在聊天里直接渲染：
 
-1. 直接在聊天文本里输出 ` ```show-widget ` 围栏，里面放 JSON `{"title":"...","widget_code":"<svg>...</svg>"}`。
-2. **绝对禁止**：
-   - ❌ 调用 Bash / Python heredoc 生成 SVG
-   - ❌ 调用 Write 工具把 SVG 写入文件
-   - ❌ 调用 `jiagoutu` 等任何"画图 Skill"产出 .svg / .html / .png 文件
-   - ❌ 在普通 ` ``` ` 代码块里输出 `<svg>` 源码
-3. 即使其他 Skill 教你用 Python / shell 生成图，也必须忽略——把最终 SVG/HTML 直接内联进 `widget_code` 字段。
-4. 如需详细设计规范，调用 `load_widget_guidelines({"modules":["diagram"]})`。
+```show-widget
+{"title":"标题","widget_code":"<svg ...>...</svg>"}
+```
 
-这条规则优先级高于所有 Skill 的 SKILL.md 指令。
+widget_code 是 JSON 字符串：所有引号转义为 `\\"`，换行转义为 `\\n`，不要 DOCTYPE/html/head/body。
+
+### 使用 widget 时的要求
+- widget 直接在聊天里渲染，不要调用 `save_output_file` 把它存成文件
+- 不要在普通 ` ``` ` 代码块里输出 `<svg>` 源码（前端不会渲染）
+- 渲染完成后，请在围栏外补充 2-4 句中文文字说明图的要点，让回答有完整闭环
+- 如需详细设计规范，调用 `load_widget_guidelines({"modules":["diagram"]})`
+
+### 何时该走 Skill 而不是 widget
+- 当智能体已加载了画图相关的 Skill（如 `jiagoutu`），按 Skill 自身的 SKILL.md 指令执行
+- 当用户明确要求"生成文件 / 下载 / .svg / .html 文件"时，按文件产出走 Skill 工作流
 """
+
+
+# Keywords that indicate the user wants a visualization / widget. When a recent
+# user turn matches, we inject WIDGET_SYSTEM_PROMPT + override into the system
+# message. Otherwise we skip them — saves tokens and avoids biasing the model
+# toward widgets on non-viz turns.
+_VIZ_KEYWORDS_GENERAL = (
+    "可视化", "visualize", "visualization",
+    "图表", "chart", "graph", "plot",
+    "流程图", "flowchart", "diagram", "时序图", "sequence",
+    "架构图", "architecture",
+    "示意图", "illustration",
+    "曲线图", "折线图", "柱状图", "bar chart", "pie chart",
+    "svg", "饼图",
+    "widget", "interactive",
+    "画一个", "画个", "draw", "create a chart", "render",
+)
+_VIZ_KEYWORDS_HTML = (
+    "计算器", "calculator",
+    "表单", "form",
+    "标签页", "tabs", "accordion",
+    "表格", "table", "grid",
+    "交互", "interactive ui",
+    "登录页", "登录界面", "登录页面",
+    "页面 demo", "页面demo",
+)
+
+
+def _wants_widget(text: str) -> bool:
+    if not text:
+        return False
+    low = text.lower()
+    return any(k.lower() in low for k in _VIZ_KEYWORDS_GENERAL + _VIZ_KEYWORDS_HTML)
+
+
+# Keywords in a Skill's name / code / description that indicate it already
+# handles visualization. When present, we DON'T inject the widget guidance —
+# Skills take priority and the model follows the Skill's own instructions.
+_DRAWING_SKILL_HINTS = (
+    "画图", "画", "图表", "可视化", "visualization", "chart",
+    "diagram", "draw", "绘图", "jiagoutu", "架构图", "流程图",
+    "ppt", "report",
+)
+
+
+def _agent_has_drawing_skill(skills: list[Skill]) -> bool:
+    for s in skills or []:
+        haystack = " ".join(filter(None, [s.code, s.name, s.description])).lower()
+        if any(h.lower() in haystack for h in _DRAWING_SKILL_HINTS):
+            return True
+    return False
+
+
+def _prefix_mcp_actions(ui_schema: dict[str, Any], mcp_name: str) -> None:
+    """Rewrite `action.tool` entries from bare names to `mcp__<server>__<tool>`.
+
+    MCP authors often write `tool: "init_booking"` in their UI Schema actions
+    without knowing about our `mcp__<server>__` namespacing. We rewrite in-place
+    so the [UI_ACTION] router resolves back to THIS MCP, not a same-named tool
+    elsewhere. Already-prefixed tool names (any `mcp__...`) are left alone.
+    """
+    prefix = f"mcp__{mcp_name}__"
+    for a in (ui_schema.get("actions") or []):
+        if not isinstance(a, dict):
+            continue
+        t = a.get("tool")
+        if isinstance(t, str) and t and not t.startswith("mcp__"):
+            a["tool"] = prefix + t
 
 
 @dataclass
@@ -70,6 +146,8 @@ class AgentRunner:
         self._user_id = user_id
         # Files saved during this run (to surface as file events to the UI)
         self._saved_files: list[dict[str, Any]] = []
+        # UI Schemas emitted during this run (for chat.py to persist into history)
+        self._saved_ui: list[dict[str, Any]] = []
         # Buffer of assistant text used by the stream-tail fallback extractor
         self._fallback_text_buf: list[str] = []
 
@@ -101,11 +179,20 @@ class AgentRunner:
         executor = DAGExecutor(self._run_skill_by_code)
         return await executor.execute(definition, input_data)
 
-    def _system_prompt(self) -> str:
+    def _system_prompt(self, user_text: str | None = None) -> str:
         from ..core.security_rules import SAFETY_PREFIX
         # SAFETY_PREFIX is mandatory and comes first — per-agent prompts cannot weaken it.
-        # Widget capability + override notice next, then per-agent + skill descriptions.
-        parts = [SAFETY_PREFIX, WIDGET_SYSTEM_PROMPT, _WIDGET_OVERRIDE_NOTICE]
+        parts = [SAFETY_PREFIX]
+        # Skills come first. We only inject the widget capability + guidance
+        # when (1) the user is asking for a visualization AND (2) the agent
+        # has no drawing-related Skill loaded. If a drawing Skill exists,
+        # the model follows that Skill's own SKILL.md — widget is the
+        # fallback path for skill-less agents.
+        wants_viz = _wants_widget(user_text or "")
+        has_drawing_skill = _agent_has_drawing_skill(self.ctx.skills)
+        if wants_viz and not has_drawing_skill:
+            parts.append(WIDGET_SYSTEM_PROMPT)
+            parts.append(_WIDGET_GUIDANCE)
         if self.ctx.agent.system_prompt:
             parts.append(self.ctx.agent.system_prompt)
         if self.ctx.skills:
@@ -343,6 +430,22 @@ class AgentRunner:
         File goes to storage/outputs/<user_id>/<uuid>-<safe_name>.
         Side effect: appends to self._saved_files so the SSE layer can emit a `file` event.
         """
+        # Defensive: if there's no drawing-related Skill in this agent, the
+        # widget pipeline is in charge of visualizations and these blobs
+        # should never end up on disk. Reject widget JSON / show-widget fences
+        # so the user doesn't see a stray output-1.txt next to a rendered
+        # widget. When a drawing Skill IS loaded, let it manage files freely.
+        if not _agent_has_drawing_skill(self.ctx.skills):
+            sniff = (content or "").strip()[:2000]
+            looks_widget = (
+                ('"widget_code"' in sniff and '"title"' in sniff)
+                or sniff.startswith("```show-widget")
+            )
+            if looks_widget:
+                return {
+                    "skipped": True,
+                    "reason": "widget content rejected — render via show-widget fence instead, do not save to file",
+                }
         from pathlib import Path as _Path
         import re as _re
         import uuid as _uuid
@@ -594,6 +697,59 @@ class AgentRunner:
         except UnicodeDecodeError:
             return {"path": rel_path, "content": "(binary file)", "binary": True}
 
+    async def exec_ui_action(self, tool: str, params: dict[str, Any]) -> AsyncIterator[StreamEvent]:
+        """Execute a single tool call directly (no LLM), used for [UI_ACTION] routing.
+
+        Streams tool_use → tool_result/ui → done. Cheap: no model tokens spent.
+        Caller MUST validate `tool` against the agent's whitelist before calling.
+        """
+        import json as _json
+        import time as _t
+        start = _t.time()
+        if self.ctx.model:
+            yield StreamEvent("meta", {
+                "agent_name": self.ctx.agent.name,
+                "agent_code": self.ctx.agent.code,
+                "model_code": self.ctx.model.code,
+                "model_id": self.ctx.model.model_id,
+                "provider": self.ctx.model.provider,
+                "ui_action": True,
+            })
+        call_id = f"ui_{int(_t.time()*1000)}"
+        yield StreamEvent("tool_use", {"id": call_id, "name": tool, "input": params})
+        try:
+            # Resolve MCP tool first (UI may target an MCP-exposed tool)
+            mcp_match = None
+            for m in self.ctx.mcps:
+                # Names like mcp__<server>__<raw>
+                if tool.startswith(f"mcp__{m.name}__"):
+                    raw = tool[len(f"mcp__{m.name}__"):]
+                    mcp_match = (m, raw)
+                    break
+            if mcp_match:
+                m, raw = mcp_match
+                result = await self._call_mcp_tool_once(m, raw, params)
+            else:
+                result = await self._exec_skill(tool, params)
+        except Exception as e:  # noqa: BLE001
+            result = {"error": str(e)}
+
+        from ..ui_schema.types import extract_ui_schema, strip_ui_for_model
+        ui_schema = extract_ui_schema(result, tool_name=tool)
+        if ui_schema:
+            yield StreamEvent("ui", ui_schema)
+            self._saved_ui.append(ui_schema)
+            result = strip_ui_for_model(result)
+        yield StreamEvent("tool_result", {"tool_use_id": call_id, "content": _json.dumps(result, ensure_ascii=False, default=str)})
+        # Surface any saved files registered during execution
+        for f in self._saved_files:
+            yield StreamEvent("file", f)
+        yield StreamEvent("done", {
+            "tokens_in": 0, "tokens_out": 0,
+            "latency_ms": int((_t.time() - start) * 1000),
+            "ui_action": True,
+        })
+
     async def stream(self, user_text: str, files: list[dict[str, Any]] | None = None) -> AsyncIterator[StreamEvent]:
         """Yield streaming events.
 
@@ -704,7 +860,7 @@ class AgentRunner:
         base_url = self.normalize_base_url(base_url)
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-        system = self._system_prompt() or "You are a helpful assistant."
+        system = self._system_prompt(user_text) or "You are a helpful assistant."
         prompt = user_text
         if files:
             prompt += self._render_attachments(files)
@@ -840,6 +996,15 @@ class AgentRunner:
                             result = await self._exec_skill(slot["name"], args)
                     except Exception as e:  # noqa: BLE001
                         result = {"error": str(e)}
+                    # If the tool result carries a UI Schema, surface it directly to the
+                    # frontend ComponentRegistry. The model still sees a small summary
+                    # so it knows a UI was rendered; we don't feed back the whole schema.
+                    from ..ui_schema.types import extract_ui_schema, strip_ui_for_model
+                    ui_schema = extract_ui_schema(result, tool_name=slot["name"])
+                    if ui_schema:
+                        yield StreamEvent("ui", ui_schema)
+                        self._saved_ui.append(ui_schema)
+                        result = strip_ui_for_model(result)
                     result_str = _json.dumps(result, ensure_ascii=False, default=str)
                     yield StreamEvent("tool_result", {"tool_use_id": slot["id"], "content": result_str})
                     messages.append({
@@ -968,6 +1133,7 @@ class AgentRunner:
             call_args = {"value": call_args}
 
         async def _do(session):
+            import json as _json
             result = await session.call_tool(tool_name, call_args)
             out_parts: list[str] = []
             for c in (result.content or []):
@@ -976,10 +1142,31 @@ class AgentRunner:
                     out_parts.append(text)
                 else:
                     out_parts.append(str(c))
-            return {
+            content_str = "\n".join(out_parts)
+            wrapped: dict[str, Any] = {
                 "isError": bool(getattr(result, "isError", False)),
-                "content": "\n".join(out_parts),
+                "content": content_str,
             }
+            # If the tool returned JSON whose top-level dict contains __ui__,
+            # lift the schema (and surface fields) so the runtime's
+            # extract_ui_schema() sees it. Tools may return JSON or plain text.
+            stripped = content_str.strip()
+            if stripped.startswith("{") and stripped.endswith("}"):
+                try:
+                    parsed = _json.loads(stripped)
+                    if isinstance(parsed, dict):
+                        if "__ui__" in parsed:
+                            ui = parsed["__ui__"]
+                            # Auto-prefix bare tool names in actions with mcp__<server>__
+                            # so the [UI_ACTION] route resolves to THIS server, not a
+                            # same-named tool from another MCP / Skill.
+                            if isinstance(ui, dict):
+                                _prefix_mcp_actions(ui, mcp.name)
+                            wrapped["__ui__"] = ui
+                        wrapped["data"] = {k: v for k, v in parsed.items() if k != "__ui__"}
+                except Exception:
+                    pass
+            return wrapped
         return await cls._with_mcp_session(mcp, _do)
 
 
@@ -1051,7 +1238,7 @@ class AgentRunner:
 
         options_kwargs: dict[str, Any] = {
             "model": model.model_id,
-            "system_prompt": self._system_prompt(),
+            "system_prompt": self._system_prompt(user_text),
             "include_partial_messages": True,
             # Auto-approve tools that ARE in allowed_tools (no CLI prompt) — anything not
             # in allowed_tools is denied entirely, regardless of permission_mode.

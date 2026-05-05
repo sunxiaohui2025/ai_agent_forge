@@ -53,33 +53,36 @@ const finalizedCode = ref('')
 
 const srcdoc = computed(() => buildReceiverSrcdoc(getWidgetIframeStyleBlock()))
 
-/** Predict the iframe height from the SVG viewBox so we can lock the panel
- *  size up front and avoid mid-streaming jumps. */
+/** Predict the iframe height ONLY when the widget is an SVG with a complete
+ *  viewBox. For HTML widgets we return 0 (= "no prediction") so the panel
+ *  starts at MIN_HEIGHT and shrinks to natural size on finalize, instead of
+ *  being stuck at the streaming reservation. */
 function predictHeight(code: string): number {
-  if (!code) return STREAM_MIN_HEIGHT
+  if (!code) return 0
+  const looksHtml = /<(div|section|article|main|canvas|input|button)\b/i.test(code) && !code.trim().startsWith('<svg')
+  if (looksHtml) return 0
   const vb = code.match(/viewBox\s*=\s*["']\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)/i)
   if (vb) {
     const w = parseFloat(vb[1])
     const h = parseFloat(vb[2])
     if (w > 0 && h > 0) {
-      // Container is ~640px wide in the chat bubble (max-width 80% of msg).
       const containerW = 640
       const predicted = Math.round(h * (containerW / w))
       return Math.min(MAX_HEIGHT, Math.max(STREAM_MIN_HEIGHT, predicted))
     }
   }
-  // HTML widgets — viewBox not applicable; reserve a comfortable default.
-  return STREAM_MIN_HEIGHT
+  return 0
 }
 
 // Seed predicted height as soon as we have (partial) code.
-cachedHeight.value = predictHeight(props.widgetCode)
+const seeded = predictHeight(props.widgetCode)
+if (seeded > 0) cachedHeight.value = seeded
 watch(() => props.widgetCode, (code) => {
   if (!code || isFinalized.value) return
-  // While streaming, only allow the prediction to GROW (e.g., viewBox H got
-  // updated upward). Never shrink. Never react to ResizeObserver.
   const predicted = predictHeight(code)
-  if (predicted > cachedHeight.value) cachedHeight.value = predicted
+  // SVGs only — HTML widgets stay at the streaming floor, then snap to true
+  // height at finalize.
+  if (predicted > 0 && predicted > cachedHeight.value) cachedHeight.value = predicted
 })
 
 const wrapperStyle = computed(() => {
@@ -112,12 +115,12 @@ function applyHeight(h: number) {
   // Hard rule: NEVER react to ResizeObserver during streaming. Panel size is
   // owned by the predicted height — silence is what kills the flicker.
   if (props.isStreaming || !isFinalized.value) return
-  // After finalize: allow only upward growth, with a generous dead-zone so
-  // sub-pixel jitter / minor reflows don't cause a visible bump.
+  // After finalize: snap to true content height. Allow shrink (HTML widgets
+  // that are smaller than the streaming reservation) AND grow (SVG content
+  // that overflows its viewBox). Apply a small dead-zone to avoid wobble.
   const next = Math.max(MIN_HEIGHT, Math.min(h, MAX_HEIGHT))
-  if (next <= cachedHeight.value + POST_FINAL_DEAD_ZONE) return
+  if (Math.abs(next - cachedHeight.value) < POST_FINAL_DEAD_ZONE) return
   cachedHeight.value = next
-  // No 'resize' emit — parent doesn't need to autoscroll for this growth.
 }
 
 function pushFinalize() {
