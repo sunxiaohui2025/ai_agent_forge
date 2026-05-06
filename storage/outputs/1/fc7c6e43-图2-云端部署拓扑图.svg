@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 550" width="900" height="550">
+  <!-- 背景 -->
+  <rect width="900" height="550" fill="#fafafa"/>
+  
+  <!-- 标题 -->
+  <text x="450" y="30" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#1a1a1a">云端容器化集群部署拓扑</text>
+  
+  <!-- 外网云区 -->
+  <rect x="30" y="50" width="840" height="470" rx="12" fill="#e8eaf6" stroke="#3f51b5" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="450" y="75" text-anchor="middle" font-family="Microsoft YaHei" font-size="14" font-weight="bold" fill="#3f51b5">云端Serverless平台（互联网可达区）</text>
+  
+  <!-- Kubernetes集群 -->
+  <rect x="50" y="95" width="800" height="380" rx="8" fill="#ffffff" stroke="#5c6bc0" stroke-width="1.5"/>
+  <text x="120" y="120" font-family="Microsoft YaHei" font-size="12" font-weight="bold" fill="#3f51b5">Kubernetes容器集群</text>
+  
+  <!-- 左侧：Headless容器池 -->
+  <rect x="70" y="140" width="360" height="310" rx="6" fill="#e3f2fd" stroke="#1976d2" stroke-width="1"/>
+  <text x="250" y="165" text-anchor="middle" font-family="Microsoft YaHei" font-size="13" font-weight="bold" fill="#1565c0">无桌面容器池（Headless）</text>
+  <text x="250" y="185" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#757575">纯API交互 · 批量处理 · 自动报表</text>
+  
+  <!-- Headless容器节点 -->
+  <rect x="90" y="205" width="150" height="70" rx="4" fill="#bbdefb" stroke="#1976d2" stroke-width="1"/>
+  <text x="165" y="225" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" font-weight="bold" fill="#0d47a1">Agent Pod-1</text>
+  <text x="165" y="245" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">公文批量处理Agent</text>
+  <text x="165" y="260" text-anchor="middle" font-family="Microsoft YaHei" font-size="8" fill="#757575">RESTful API接口</text>
+  
+  <rect x="260" y="205" width="150" height="70" rx="4" fill="#bbdefb" stroke="#1976d2" stroke-width="1"/>
+  <text x="335" y="225" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" font-weight="bold" fill="#0d47a1">Agent Pod-2</text>
+  <text x="335" y="245" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">数据分析Agent</text>
+  <text x="335" y="260" text-anchor="middle" font-family="Microsoft YaHei" font-size="8" fill="#757575">异步任务队列</text>
+  
+  <rect x="90" y="295" width="150" height="70" rx="4" fill="#bbdefb" stroke="#1976d2" stroke-width="1"/>
+  <text x="165" y="315" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" font-weight="bold" fill="#0d47a1">Agent Pod-3</text>
+  <text x="165" y="335" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">报表生成Agent</text>
+  <text x="165" y="350" text-anchor="middle" font-family="Microsoft YaHei" font-size="8" fill="#757575">定时任务调度</text>
+  
+  <rect x="260" y="295" width="150" height="70" rx="4" fill="#bbdefb" stroke="#1976d2" stroke-width="1"/>
+  <text x="335" y="315" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" font-weight="bold" fill="#0d47a1">Agent Pod-n</text>
+  <text x="335" y="335" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">弹性扩缩容</text>
+  <text x="335" y="350" text-anchor="middle" font-family="Microsoft YaHei" font-size="8" fill="#757575">HPA自动伸缩</text>
+  
+  <!-- 右侧：VDI桌面池 -->
+  <rect x="470" y="140" width="360" height="310" rx="6" fill="#fce4ec" stroke="#c2185b" stroke-width="1"/>
+  <text x="650" y="165" text-anchor="middle" font-family="Microsoft YaHei" font-size="13" font-weight="bold" fill="#ad1457">有桌面容器池（VDI）</text>
+  <text x="650" y="185" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#757575">拟人化操作 · 网页填报 · 系统录入</text>
+  
+  <!-- VDI节点 -->
+  <rect x="490" y="205" width="150" height="70" rx="4" fill="#f8bbd9" stroke="#c2185b" stroke-width="1"/>
+  <text x="565" y="225" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" font-weight="bold" fill="#880e4f">VDI Pod-1</text>
+  <text x="565" y="245" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">网页填报Agent</text>
+  <text x="565" y="260" text-anchor="middle" font-family="Microsoft YaHei" font-size="8" fill="#757575">Chrome浏览器环境</text>
+  
+  <rect x="660" y="205" width="150" height="70" rx="4" fill="#f8bbd9" stroke="#c2185b" stroke-width="1"/>
+  <text x="735" y="225" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" font-weight="bold" fill="#880e4f">VDI Pod-2</text>
+  <text x="735" y="245" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">系统录入Agent</text>
+  <text x="735" y="260" text-anchor="middle" font-family="Microsoft YaHei" font-size="8" fill="#757575">RPA自动化流程</text>
+  
+  <rect x="490" y="295" width="150" height="70" rx="4" fill="#f8bbd9" stroke="#c2185b" stroke-width="1"/>
+  <text x="565" y="315" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" font-weight="bold" fill="#880e4f">VDI Pod-3</text>
+  <text x="565" y="335" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">视频会议Agent</text>
+  <text x="565" y="350" text-anchor="middle" font-family="Microsoft YaHei" font-size="8" fill="#757575">音视频处理能力</text>
+  
+  <rect x="660" y="295" width="150" height="70" rx="4" fill="#f8bbd9" stroke="#c2185b" stroke-width="1"/>
+  <text x="735" y="315" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" font-weight="bold" fill="#880e4f">VDI Pod-n</text>
+  <text x="735" y="335" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">桌面虚拟化</text>
+  <text x="735" y="350" text-anchor="middle" font-family="Microsoft YaHei" font-size="8" fill="#757575">VNC远程桌面</text>
+  
+  <!-- 调度中心 -->
+  <rect x="350" y="470" width="200" height="40" rx="20" fill="#fff3e0" stroke="#f57c00" stroke-width="2"/>
+  <text x="450" y="495" text-anchor="middle" font-family="Microsoft YaHei" font-size="11" font-weight="bold" fill="#ef6c00">Agent调度中心</text>
+  
+  <!-- 连接箭头 -->
+  <line x1="450" y1="470" x2="450" y2="450" stroke="#f57c00" stroke-width="2"/>
+  <polygon points="450,465 445,455 455,455" fill="#f57c00"/>
+  
+  <line x1="200" y1="400" x2="200" y2="445" stroke="#1976d2" stroke-width="1.5"/>
+  <line x1="300" y1="400" x2="300" y2="445" stroke="#1976d2" stroke-width="1.5"/>
+  <line x1="565" y1="400" x2="565" y2="445" stroke="#c2185b" stroke-width="1.5"/>
+  <line x1="735" y1="400" x2="735" y2="445" stroke="#c2185b" stroke-width="1.5"/>
+  
+  <!-- 底部说明 -->
+  <text x="450" y="535" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#666">云端部署 · 弹性伸缩 · Serverless架构 · 分钟级资源调度</text>
+</svg>

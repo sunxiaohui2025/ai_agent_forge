@@ -3,7 +3,7 @@
     <!-- Conversation -->
     <section class="conv">
       <div ref="scrollRef" class="messages">
-        <div v-if="!chat.currentConvId" class="welcome">
+        <div v-if="!chat.currentConvId || chat.messages.length === 0" class="welcome">
           <div class="welcome-mark">
             <span class="dot dot-1" /><span class="dot dot-2" />
             <span class="dot dot-3" /><span class="dot dot-4" />
@@ -27,12 +27,11 @@
                 <span class="thinking-dots"><span /><span /><span /></span>
               </div>
 
-              <!-- meta: 当前回答用的 agent / model -->
-              <div v-if="m.role === 'assistant' && m._meta" class="msg-meta">
+              <!-- meta: 当前回答用的 agent / model. Only after the first token has arrived. -->
+              <div v-if="m.role === 'assistant' && m._meta && m.content_json?.text" class="msg-meta">
                 <span>{{ m._meta.agent_name }}</span>
                 <span class="dot-sep">·</span>
                 <code>{{ m._meta.model_id }}</code>
-                <span class="muted">({{ m._meta.provider }})</span>
               </div>
 
               <!-- thinking block -->
@@ -208,7 +207,7 @@ async function onPick(uploadFile: any) {
     return
   }
   if (!chat.currentConvId) {
-    await chat.newConv()
+    await chat.ensureConv()
   }
   try {
     const r = await api.uploadFile(file, chat.currentConvId!)
@@ -279,7 +278,7 @@ function openPreview(f: any) {
 // We do NOT push a user bubble for it — UI actions are continuations, not utterances.
 async function onAgentCall(text: string) {
   if (!chat.currentAgent || sending.value) return
-  if (!chat.currentConvId) await chat.newConv()
+  if (!chat.currentConvId) await chat.ensureConv()
 
   const placeholder: any = reactive({
     _tmp: Date.now(), role: 'assistant',
@@ -400,7 +399,7 @@ async function send() {
   }
   const isFirstMessage = chat.messages.length === 0
   if (!chat.currentConvId) {
-    await chat.newConv()
+    await chat.ensureConv()
   }
   const text = input.value.trim()
   const fileIds = chat.pendingFiles.map((f) => f.id)

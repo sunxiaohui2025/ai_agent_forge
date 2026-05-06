@@ -26,7 +26,16 @@ export const useChat = defineStore('chat', {
       this.loaded = true
     },
     selectAgent(a: any) {
+      const switched = a?.id !== this.currentAgent?.id
       this.currentAgent = a
+      // Switching agent → drop the active conv from local state so the welcome
+      // screen for the new agent is shown. The previous conv still exists in
+      // the sidebar list (and DB) and can be re-opened by clicking it.
+      if (switched) {
+        this.currentConvId = null
+        this.messages = []
+        this.pendingFiles = []
+      }
     },
     reset() {
       this.agents = []
@@ -38,13 +47,30 @@ export const useChat = defineStore('chat', {
       this.pendingFiles = []
       this.loaded = false
     },
+    /** "New conversation" UX action — local-only reset that surfaces the
+     *  welcome screen for the current agent. We deliberately do NOT call the
+     *  create-conversation API here, so users who switch agents and click
+     *  around without sending anything don't accumulate empty conversations
+     *  in their history. The real DB row is created lazily by `ensureConv()`
+     *  on the first send. */
     async newConv() {
+      this.currentConvId = null
+      this.messages = []
+      this.pendingFiles = []
+      return null
+    },
+    /** Lazy creator: ensures a real DB conversation exists before the first
+     *  message is sent. Returns the existing conv if one is already active. */
+    async ensureConv() {
+      if (this.currentConvId) {
+        return this.convs.find((x) => x.id === this.currentConvId) || null
+      }
       if (!this.currentAgent) return null
       const c = await api.createConversation(this.currentAgent.id)
       this.convs.unshift(c)
       this.currentConvId = c.id
       this.messages = []
-      this.pendingFiles = []
+      // keep pendingFiles — user may have attached files before sending
       return c
     },
     async selectConv(c: any) {

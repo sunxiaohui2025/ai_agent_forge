@@ -31,7 +31,7 @@ from .widget_guidelines import (
 _WIDGET_GUIDANCE = """
 ## 可视化输出指引（在没有更合适的 Skill 时使用）
 
-当用户请求可视化（可视化 / 流程图 / 架构图 / 示意图 / SVG / 图表 / HTML / 网页 / 表单），
+当用户请求可视化（流程图 / 架构图 / 示意图 / SVG / 图表 / HTML 计算器 / 表单），
 且你**没有更合适的 Skill** 来完成此任务时，请使用 `show-widget` 围栏在聊天里直接渲染：
 
 ```show-widget
@@ -48,7 +48,7 @@ widget_code 是 JSON 字符串：所有引号转义为 `\\"`，换行转义为 `
 - 顺序：调用 `load_widget_guidelines` → 立即在下一段助手文本里输出 ` ```show-widget ` 围栏 → 围栏闭合后再写文字总结
 
 ### 何时该走 Skill 而不是 widget
-- 当智能体命中或者已加载了画图相关的 Skill（如 `jiagoutu`），按 Skill 自身的 SKILL.md 指令执行，此时Skill是主导，widget是辅助手段（比如 Skill 产出图的源码，交给 widget 渲染）
+- 当智能体已加载了画图相关的 Skill（如 `jiagoutu`），按 Skill 自身的 SKILL.md 指令执行
 - 当用户明确要求"生成文件 / 下载 / .svg / .html 文件"时，按文件产出走 Skill 工作流
 """
 
@@ -69,12 +69,12 @@ _VIZ_KEYWORDS_GENERAL = (
     "画一个", "画个", "draw", "create a chart", "render",
 )
 _VIZ_KEYWORDS_HTML = (
-    "html", "html文件", "网页", "页面",
+    "计算器", "calculator",
     "表单", "form",
     "标签页", "tabs", "accordion",
     "表格", "table", "grid",
     "交互", "interactive ui",
-    "浏览器页面", "系统界面",
+    "登录页", "登录界面", "登录页面",
     "页面 demo", "页面demo",
 )
 
@@ -96,7 +96,7 @@ def _wants_widget(text: str) -> bool:
 # diagram rendering; they're different output categories. Only list things
 # that are TRULY about drawing diagrams to disk.
 _DRAWING_SKILL_HINTS = (
-    "画图", "绘图", "架构图", "流程图", "时序图",
+    "画图", "绘图", "jiagoutu", "架构图", "流程图", "时序图",
     "示意图", "可视化生成", "diagram generator", "svg generator",
 )
 

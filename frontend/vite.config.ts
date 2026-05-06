@@ -20,6 +20,13 @@ export default defineConfig({
           })
         },
       },
+      // Scenic-spot mock backend serves images at :5001/images/*.jpg.
+      // UI Schema CardList uses these relative URLs as <img src>; proxy
+      // them so the browser doesn't 404 against the Vite dev server.
+      '/images': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+      },
     },
   },
 })

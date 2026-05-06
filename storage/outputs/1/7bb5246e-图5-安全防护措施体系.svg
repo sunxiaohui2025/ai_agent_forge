@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" width="800" height="420">
+  <!-- 背景 -->
+  <rect width="800" height="420" fill="#fafafa"/>
+  
+  <!-- 标题 -->
+  <text x="400" y="30" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#1a1a1a">安全防护措施体系</text>
+  
+  <!-- 中心：纵深防御 -->
+  <circle cx="400" cy="210" r="55" fill="#e3f2fd" stroke="#1976d2" stroke-width="3"/>
+  <text x="400" y="200" text-anchor="middle" font-family="Microsoft YaHei" font-size="12" font-weight="bold" fill="#1565c0">纵深防御体系</text>
+  <text x="400" y="220" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">等保2.0三级</text>
+  <text x="400" y="235" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">国密算法支持</text>
+  
+  <!-- 左上：数据安全 -->
+  <rect x="50" y="80" width="180" height="110" rx="8" fill="#fff3e0" stroke="#f57c00" stroke-width="2"/>
+  <text x="140" y="105" text-anchor="middle" font-family="Microsoft YaHei" font-size="13" font-weight="bold" fill="#ef6c00">数据安全与隐私保护</text>
+  
+  <rect x="65" y="125" width="150" height="25" rx="3" fill="#ffe0b2" stroke="#f57c00" stroke-width="1"/>
+  <text x="140" y="142" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#e65100">传输层：TLS1.3/国密加密</text>
+  
+  <rect x="65" y="155" width="150" height="25" rx="3" fill="#ffe0b2" stroke="#f57c00" stroke-width="1"/>
+  <text x="140" y="172" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#e65100">存储层：字段级加密脱敏</text>
+  
+  <!-- 右上：模型安全 -->
+  <rect x="570" y="80" width="180" height="110" rx="8" fill="#fce4ec" stroke="#c2185b" stroke-width="2"/>
+  <text x="660" y="105" text-anchor="middle" font-family="Microsoft YaHei" font-size="13" font-weight="bold" fill="#c2185b">模型安全与内容过滤</text>
+  
+  <rect x="585" y="125" width="150" height="25" rx="3" fill="#f8bbd9" stroke="#c2185b" stroke-width="1"/>
+  <text x="660" y="142" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#880e4f">输入侧：提示词过滤拦截</text>
+  
+  <rect x="585" y="155" width="150" height="25" rx="3" fill="#f8bbd9" stroke="#c2185b" stroke-width="1"/>
+  <text x="660" y="172" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#880e4f">输出侧：政务合规审核</text>
+  
+  <!-- 左下：访问控制 -->
+  <rect x="50" y="270" width="180" height="110" rx="8" fill="#e8f5e9" stroke="#388e3c" stroke-width="2"/>
+  <text x="140" y="295" text-anchor="middle" font-family="Microsoft YaHei" font-size="13" font-weight="bold" fill="#2e7d32">访问控制与审计追溯</text>
+  
+  <rect x="65" y="315" width="150" height="25" rx="3" fill="#c8e6c9" stroke="#388e3c" stroke-width="1"/>
+  <text x="140" y="332" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#1b5e20">零信任架构：多因子认证</text>
+  
+  <rect x="65" y="345" width="150" height="25" rx="3" fill="#c8e6c9" stroke="#388e3c" stroke-width="1"/>
+  <text x="140" y="362" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#1b5e20">审计日志：180天留存</text>
+  
+  <!-- 右下：多租户隔离 -->
+  <rect x="570" y="270" width="180" height="110" rx="8" fill="#e8eaf6" stroke="#3f51b5" stroke-width="2"/>
+  <text x="660" y="295" text-anchor="middle" font-family="Microsoft YaHei" font-size="13" font-weight="bold" fill="#3f51b5">多租户隔离机制</text>
+  
+  <rect x="585" y="315" width="150" height="25" rx="3" fill="#c5cae9" stroke="#3f51b5" stroke-width="1"/>
+  <text x="660" y="332" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#303f9f">计算/网络/数据/模型隔离</text>
+  
+  <rect x="585" y="345" width="150" height="25" rx="3" fill="#c5cae9" stroke="#3f51b5" stroke-width="1"/>
+  <text x="660" y="362" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#303f9f">独立密钥与VPC隔离</text>
+  
+  <!-- 连接线 -->
+  <!-- 左上到中心 -->
+  <line x1="230" y1="135" x2="345" y2="180" stroke="#f57c00" stroke-width="1.5"/>
+  <polygon points="340,175 348,185 338,183" fill="#f57c00"/>
+  
+  <!-- 右上到中心 -->
+  <line x1="570" y1="135" x2="455" y2="180" stroke="#c2185b" stroke-width="1.5"/>
+  <polygon points="460,175 452,185 462,183" fill="#c2185b"/>
+  
+  <!-- 左下到中心 -->
+  <line x1="230" y1="325" x2="345" y2="240" stroke="#388e3c" stroke-width="1.5"/>
+  <polygon points="340,245 348,235 338,237" fill="#388e3c"/>
+  
+  <!-- 右下到中心 -->
+  <line x1="570" y1="325" x2="455" y2="240" stroke="#3f51b5" stroke-width="1.5"/>
+  <polygon points="460,245 452,235 462,237" fill="#3f51b5"/>
+  
+  <!-- 中心到四个方向的反向连接 -->
+  <line x1="370" y1="195" x2="250" y2="150" stroke="#bdbdbd" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="430" y1="195" x2="550" y2="150" stroke="#bdbdbd" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="370" y1="225" x2="250" y2="300" stroke="#bdbdbd" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="430" y1="225" x2="550" y2="300" stroke="#bdbdbd" stroke-width="1" stroke-dasharray="3,2"/>
+  
+  <!-- 底部说明 -->
+  <rect x="50" y="390" width="700" height="22" rx="4" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="400" y="405" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#666">四层纵深防御 · 全链路加密 · 行为审计追溯 · 多租户安全隔离</text>
+</svg>

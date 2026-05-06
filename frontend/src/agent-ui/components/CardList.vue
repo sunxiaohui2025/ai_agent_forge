@@ -24,8 +24,17 @@
         class="card"
         @click="cardAction && fire(cardAction, i, item)"
       >
-        <div class="img-wrap" v-if="pickImage(item)">
-          <img :src="pickImage(item)" :alt="pickTitle(item)" />
+        <div class="img-wrap">
+          <img
+            v-if="pickImage(item) && !brokenImages[i]"
+            :src="pickImage(item)"
+            :alt="pickTitle(item)"
+            @error="brokenImages[i] = true"
+          />
+          <div v-else class="img-placeholder" :style="{ background: placeholderColor(i) }">
+            <span class="ph-letter">{{ pickTitle(item).slice(0, 1) }}</span>
+            <span class="ph-name">{{ pickTitle(item) }}</span>
+          </div>
         </div>
         <div class="card-body">
           <div class="card-name">{{ pickTitle(item) }}</div>
@@ -69,6 +78,21 @@ import type { ActionDef, UIMessage } from '../types/schema'
 const props = defineProps<{ schema: UIMessage; onAction: (a: ActionDef, params: any, ctx: any) => void }>()
 
 const activeSort = ref<string>('')
+// Track which cards' images failed to load (so we can swap to a placeholder)
+const brokenImages = ref<Record<number, boolean>>({})
+
+// Deterministic pastel based on index — gives each card a different placeholder color
+function placeholderColor(i: number): string {
+  const palette = [
+    'linear-gradient(135deg,#fef3c7 0%,#fde68a 100%)',
+    'linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%)',
+    'linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%)',
+    'linear-gradient(135deg,#fce7f3 0%,#fbcfe8 100%)',
+    'linear-gradient(135deg,#ede9fe 0%,#ddd6fe 100%)',
+    'linear-gradient(135deg,#fed7aa 0%,#fdba74 100%)',
+  ]
+  return palette[i % palette.length]
+}
 
 const cardAction = computed<ActionDef | undefined>(() =>
   (props.schema.actions || []).find(a => a.trigger === 'card_click'))
@@ -178,6 +202,25 @@ function onPage(page: number) {
 .card:hover { transform: translateY(-2px); box-shadow: var(--m-shadow-2); border-color: var(--m-border-strong); }
 .img-wrap { aspect-ratio: 16/9; background: var(--m-bg-soft); }
 .img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.img-placeholder {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 4px;
+  color: rgba(15,23,42,.6);
+  font-family: 'Inter', sans-serif;
+}
+.img-placeholder .ph-letter {
+  font-size: 38px; font-weight: 700; line-height: 1;
+  color: rgba(15,23,42,.55);
+  letter-spacing: -0.02em;
+}
+.img-placeholder .ph-name {
+  font-size: 11px; font-weight: 500;
+  color: rgba(15,23,42,.5);
+  text-align: center; padding: 0 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
 .card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .card-name { font-weight: 600; font-size: 14px; color: var(--m-text); }
 .card-addr { font-size: 12px; }

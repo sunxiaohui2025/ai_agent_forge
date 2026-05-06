@@ -1,0 +1,123 @@
+<svg width="100%" viewBox="0 0 680 520" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Arrow marker -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#5f6368" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <!-- Drop shadow -->
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="#fafbfc"/>
+  
+  <!-- Title -->
+  <text x="340" y="32" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="600" fill="#202124" text-anchor="middle">RAG 检索增强生成架构</text>
+  
+  <!-- Query Processing Box -->
+  <g transform="translate(60, 70)">
+    <rect width="120" height="72" rx="8" fill="#e8f0fe" filter="url(#shadow)"/>
+    <rect width="120" height="72" rx="8" fill="none" stroke="#aecbfa" stroke-width="1.5"/>
+    <text x="60" y="32" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="500" fill="#1967d2" text-anchor="middle">查询处理</text>
+    <text x="60" y="52" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5f6368" text-anchor="middle">Query Processing</text>
+  </g>
+  
+  <!-- Embedding Model Box -->
+  <g transform="translate(220, 70)">
+    <rect width="120" height="72" rx="8" fill="#fef7e0" filter="url(#shadow)"/>
+    <rect width="120" height="72" rx="8" fill="none" stroke="#feefc3" stroke-width="1.5"/>
+    <text x="60" y="32" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="500" fill="#f29900" text-anchor="middle">嵌入模型</text>
+    <text x="60" y="52" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5f6368" text-anchor="middle">Embedding Model</text>
+  </g>
+  
+  <!-- Vector Search Box -->
+  <g transform="translate(380, 70)">
+    <rect width="120" height="72" rx="8" fill="#e6f4ea" filter="url(#shadow)"/>
+    <rect width="120" height="72" rx="8" fill="none" stroke="#a8dab5" stroke-width="1.5"/>
+    <text x="60" y="32" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="500" fill="#1e8e3e" text-anchor="middle">向量检索</text>
+    <text x="60" y="52" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5f6368" text-anchor="middle">Vector Search</text>
+  </g>
+  
+  <!-- Context Assembly Box -->
+  <g transform="translate(540, 70)">
+    <rect width="120" height="72" rx="8" fill="#fce8e6" filter="url(#shadow)"/>
+    <rect width="120" height="72" rx="8" fill="none" stroke="#f6aea9" stroke-width="1.5"/>
+    <text x="60" y="32" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="500" fill="#d93025" text-anchor="middle">上下文组装</text>
+    <text x="60" y="52" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5f6368" text-anchor="middle">Context Assembly</text>
+  </g>
+  
+  <!-- Arrows: Top Row -->
+  <line x1="180" y1="106" x2="220" y2="106" stroke="#5f6368" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="340" y1="106" x2="380" y2="106" stroke="#5f6368" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="500" y1="106" x2="540" y2="106" stroke="#5f6368" stroke-width="1.5" marker-end="url(#arrow)"/>
+  
+  <!-- Knowledge Base Section -->
+  <g transform="translate(100, 180)">
+    <!-- Section Title -->
+    <text x="240" y="-12" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="500" fill="#5f6368" text-anchor="middle">知识库 Knowledge Base</text>
+    
+    <!-- Documents -->
+    <g transform="translate(0, 0)">
+      <rect width="100" height="60" rx="8" fill="#f8f9fa" filter="url(#shadow)"/>
+      <rect width="100" height="60" rx="8" fill="none" stroke="#dadce0" stroke-width="1.5"/>
+      <text x="50" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="500" fill="#3c4043" text-anchor="middle">文档库</text>
+      <text x="50" y="45" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5f6368" text-anchor="middle">Documents</text>
+    </g>
+    
+    <!-- Chunking -->
+    <g transform="translate(140, 0)">
+      <rect width="100" height="60" rx="8" fill="#f8f9fa" filter="url(#shadow)"/>
+      <rect width="100" height="60" rx="8" fill="none" stroke="#dadce0" stroke-width="1.5"/>
+      <text x="50" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="500" fill="#3c4043" text-anchor="middle">分块处理</text>
+      <text x="50" y="45" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5f6368" text-anchor="middle">Chunking</text>
+    </g>
+    
+    <!-- Vector DB -->
+    <g transform="translate(280, 0)">
+      <rect width="100" height="60" rx="8" fill="#f8f9fa" filter="url(#shadow)"/>
+      <rect width="100" height="60" rx="8" fill="none" stroke="#dadce0" stroke-width="1.5"/>
+      <text x="50" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="500" fill="#3c4043" text-anchor="middle">向量数据库</text>
+      <text x="50" y="45" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5f6368" text-anchor="middle">Vector DB</text>
+    </g>
+    
+    <!-- Arrows in KB -->
+    <line x1="100" y1="30" x2="140" y2="30" stroke="#dadce0" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="240" y1="30" x2="280" y2="30" stroke="#dadce0" stroke-width="1.5" marker-end="url(#arrow)"/>
+  </g>
+  
+  <!-- Vertical Arrow: Vector DB to Vector Search -->
+  <line x1="440" y1="240" x2="440" y2="142" stroke="#5f6368" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <text x="455" y="195" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#5f6368">检索</text>
+  
+  <!-- LLM Generation Section -->
+  <g transform="translate(280, 280)">
+    <!-- Section Title -->
+    <text x="60" y="-12" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="500" fill="#5f6368" text-anchor="middle">生成模块 Generation</text>
+    
+    <!-- LLM Box -->
+    <rect width="120" height="80" rx="8" fill="#1a73e8" filter="url(#shadow)"/>
+    <text x="60" y="35" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" fill="#ffffff" text-anchor="middle">大语言模型</text>
+    <text x="60" y="55" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#e8f0fe" text-anchor="middle">LLM (GPT/Claude)</text>
+  </g>
+  
+  <!-- Vertical Arrow: Context to LLM -->
+  <line x1="600" y1="142" x2="600" y2="320" stroke="#5f6368" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="600" y1="320" x2="400" y2="320" stroke="#5f6368" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="610" y="235" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#5f6368">增强提示</text>
+  
+  <!-- Output Section -->
+  <g transform="translate(280, 400)">
+    <rect width="120" height="60" rx="8" fill="#e6f4ea" filter="url(#shadow)"/>
+    <rect width="120" height="60" rx="8" fill="none" stroke="#a8dab5" stroke-width="1.5"/>
+    <text x="60" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="500" fill="#1e8e3e" text-anchor="middle">生成回答</text>
+    <text x="60" y="45" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#5f6368" text-anchor="middle">Generated Response</text>
+  </g>
+  
+  <!-- Arrow: LLM to Output -->
+  <line x1="340" y1="360" x2="340" y2="400" stroke="#5f6368" stroke-width="1.5" marker-end="url(#arrow)"/>
+  
+  <!-- Data Flow Label -->
+  <text x="340" y="490" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#5f6368" text-anchor="middle">数据流 → 实线表示主要流程，虚线表示知识库查询</text>
+</svg>

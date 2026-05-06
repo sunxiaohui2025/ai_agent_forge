@@ -15,7 +15,6 @@
       :class="{ 'widget-stream-veil--active': isStreaming }"
       aria-hidden="true"
     />
-    <div v-if="title" class="widget-title-chip">{{ title }}</div>
   </div>
 </template>
 
@@ -249,19 +248,4 @@ onUnmounted(() => {
   100% { background-position: 0 0, 200% 0; }
 }
 
-/* Title chip — sits above the widget while streaming, fades after */
-.widget-title-chip {
-  position: absolute;
-  top: 10px; left: 12px;
-  font-size: 11px; font-weight: 500;
-  letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--m-text-secondary, #5f6368);
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(4px);
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid var(--m-border, #e8eaed);
-  pointer-events: none;
-  user-select: none;
-}
 </style>

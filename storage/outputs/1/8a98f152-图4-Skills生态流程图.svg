@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" width="800" height="380">
+  <!-- 背景 -->
+  <rect width="800" height="380" fill="#fafafa"/>
+  
+  <!-- 标题 -->
+  <text x="400" y="30" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="18" font-weight="bold" fill="#1a1a1a">Skills市场生态流程</text>
+  
+  <!-- 阶段1：发现 -->
+  <rect x="50" y="70" width="140" height="240" rx="8" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>
+  <text x="120" y="95" text-anchor="middle" font-family="Microsoft YaHei" font-size="14" font-weight="bold" fill="#1565c0">发现</text>
+  
+  <rect x="70" y="120" width="100" height="45" rx="4" fill="#bbdefb" stroke="#1976d2" stroke-width="1"/>
+  <text x="120" y="140" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#0d47a1">自然语言搜索</text>
+  <text x="120" y="155" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">语义匹配推荐</text>
+  
+  <rect x="70" y="180" width="100" height="45" rx="4" fill="#bbdefb" stroke="#1976d2" stroke-width="1"/>
+  <text x="120" y="200" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#0d47a1">分类浏览</text>
+  <text x="120" y="215" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">按场景/部门筛选</text>
+  
+  <rect x="70" y="240" width="100" height="45" rx="4" fill="#bbdefb" stroke="#1976d2" stroke-width="1"/>
+  <text x="120" y="260" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#0d47a1">热门排行</text>
+  <text x="120" y="275" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">下载量/评分排序</text>
+  
+  <!-- 箭头1 -->
+  <line x1="190" y1="190" x2="210" y2="190" stroke="#bdbdbd" stroke-width="2"/>
+  <polygon points="205,185 215,190 205,195" fill="#bdbdbd"/>
+  
+  <!-- 阶段2：验证 -->
+  <rect x="210" y="70" width="140" height="240" rx="8" fill="#fff3e0" stroke="#f57c00" stroke-width="2"/>
+  <text x="280" y="95" text-anchor="middle" font-family="Microsoft YaHei" font-size="14" font-weight="bold" fill="#ef6c00">验证</text>
+  
+  <rect x="230" y="120" width="100" height="45" rx="4" fill="#ffe0b2" stroke="#f57c00" stroke-width="1"/>
+  <text x="280" y="140" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#e65100">安全扫描</text>
+  <text x="280" y="155" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">代码审计/漏洞检测</text>
+  
+  <rect x="230" y="180" width="100" height="45" rx="4" fill="#ffe0b2" stroke="#f57c00" stroke-width="1"/>
+  <text x="280" y="200" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#e65100">沙箱测试</text>
+  <text x="280" y="215" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">行为边界验证</text>
+  
+  <rect x="230" y="240" width="100" height="45" rx="4" fill="#ffe0b2" stroke="#f57c00" stroke-width="1"/>
+  <text x="280" y="260" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#e65100">数字签名</text>
+  <text x="280" y="275" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">来源可信认证</text>
+  
+  <!-- 箭头2 -->
+  <line x1="350" y1="190" x2="370" y2="190" stroke="#bdbdbd" stroke-width="2"/>
+  <polygon points="365,185 375,190 365,195" fill="#bdbdbd"/>
+  
+  <!-- 阶段3：安装 -->
+  <rect x="370" y="70" width="140" height="240" rx="8" fill="#f3e5f5" stroke="#7b1fa2" stroke-width="2"/>
+  <text x="440" y="95" text-anchor="middle" font-family="Microsoft YaHei" font-size="14" font-weight="bold" fill="#7b1fa2">安装</text>
+  
+  <rect x="390" y="120" width="100" height="45" rx="4" fill="#e1bee7" stroke="#7b1fa2" stroke-width="1"/>
+  <text x="440" y="140" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#6a1b9a">一键部署</text>
+  <text x="440" y="155" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">自动解析依赖</text>
+  
+  <rect x="390" y="180" width="100" height="45" rx="4" fill="#e1bee7" stroke="#7b1fa2" stroke-width="1"/>
+  <text x="440" y="200" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#6a1b9a">环境隔离</text>
+  <text x="440" y="215" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">独立容器运行</text>
+  
+  <rect x="390" y="240" width="100" height="45" rx="4" fill="#e1bee7" stroke="#7b1fa2" stroke-width="1"/>
+  <text x="440" y="260" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#6a1b9a">权限配置</text>
+  <text x="440" y="275" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">最小化授权申请</text>
+  
+  <!-- 箭头3 -->
+  <line x1="510" y1="190" x2="530" y2="190" stroke="#bdbdbd" stroke-width="2"/>
+  <polygon points="525,185 535,190 525,195" fill="#bdbdbd"/>
+  
+  <!-- 阶段4：使用 -->
+  <rect x="530" y="70" width="140" height="240" rx="8" fill="#e8f5e9" stroke="#388e3c" stroke-width="2"/>
+  <text x="600" y="95" text-anchor="middle" font-family="Microsoft YaHei" font-size="14" font-weight="bold" fill="#2e7d32">使用</text>
+  
+  <rect x="550" y="120" width="100" height="45" rx="4" fill="#c8e6c9" stroke="#388e3c" stroke-width="1"/>
+  <text x="600" y="140" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#1b5e20">统一调用接口</text>
+  <text x="600" y="155" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">标准化输入输出</text>
+  
+  <rect x="550" y="180" width="100" height="45" rx="4" fill="#c8e6c9" stroke="#388e3c" stroke-width="1"/>
+  <text x="600" y="200" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#1b5e20">运行时监控</text>
+  <text x="600" y="215" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">性能/异常追踪</text>
+  
+  <rect x="550" y="240" width="100" height="45" rx="4" fill="#c8e6c9" stroke="#388e3c" stroke-width="1"/>
+  <text x="600" y="260" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#1b5e20">效果反馈</text>
+  <text x="600" y="275" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#424242">评分/评价/迭代</text>
+  
+  <!-- 箭头4 -->
+  <line x1="670" y1="190" x2="690" y2="190" stroke="#bdbdbd" stroke-width="2"/>
+  <polygon points="685,185 695,190 685,195" fill="#bdbdbd"/>
+  
+  <!-- 阶段5：管理（闭环） -->
+  <rect x="690" y="70" width="100" height="240" rx="8" fill="#eceff1" stroke="#546e7a" stroke-width="2"/>
+  <text x="740" y="95" text-anchor="middle" font-family="Microsoft YaHei" font-size="13" font-weight="bold" fill="#37474f">管理</text>
+  
+  <rect x="705" y="120" width="70" height="35" rx="3" fill="#cfd8dc" stroke="#546e7a" stroke-width="1"/>
+  <text x="740" y="142" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#455a64">版本迭代</text>
+  
+  <rect x="705" y="165" width="70" height="35" rx="3" fill="#cfd8dc" stroke="#546e7a" stroke-width="1"/>
+  <text x="740" y="187" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#455a64">灰度发布</text>
+  
+  <rect x="705" y="210" width="70" height="35" rx="3" fill="#cfd8dc" stroke="#546e7a" stroke-width="1"/>
+  <text x="740" y="232" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#455a64">回滚降级</text>
+  
+  <rect x="705" y="255" width="70" height="35" rx="3" fill="#cfd8dc" stroke="#546e7a" stroke-width="1"/>
+  <text x="740" y="277" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#455a64">下线删除</text>
+  
+  <!-- 返回箭头（闭环） -->
+  <path d="M740,330 Q400,360 120,330" stroke="#9e9e9e" stroke-width="1.5" fill="none" stroke-dasharray="5,3"/>
+  <polygon points="125,325 115,330 125,335" fill="#9e9e9e"/>
+  <text x="400" y="350" text-anchor="middle" font-family="Microsoft YaHei" font-size="10" fill="#757575">全生命周期管理闭环</text>
+  
+  <!-- 底部说明 -->
+  <rect x="50" y="325" width="140" height="40" rx="4" fill="#1976d2" opacity="0.1"/>
+  <text x="120" y="350" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#1565c0">能力发现</text>
+  
+  <rect x="210" y="325" width="140" height="40" rx="4" fill="#f57c00" opacity="0.1"/>
+  <text x="280" y="350" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#ef6c00">可信保障</text>
+  
+  <rect x="370" y="325" width="140" height="40" rx="4" fill="#7b1fa2" opacity="0.1"/>
+  <text x="440" y="350" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#7b1fa2">便捷集成</text>
+  
+  <rect x="530" y="325" width="140" height="40" rx="4" fill="#388e3c" opacity="0.1"/>
+  <text x="600" y="350" text-anchor="middle" font-family="Microsoft YaHei" font-size="9" fill="#2e7d32">持续运营</text>
+</svg>

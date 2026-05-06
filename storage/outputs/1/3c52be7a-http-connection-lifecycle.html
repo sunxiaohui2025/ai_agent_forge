@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP 连接与释放过程可视化</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #fafbfc 0%, #f8f9fa 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            color: #202124;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .header p {
+            font-size: 14px;
+            color: #5f6368;
+        }
+        
+        /* 主舞台区域 */
+        .stage {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(60,64,67,0.08);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+        
+        .stage-title {
+            font-size: 18px;
+            color: #1a73e8;
+            margin-bottom: 20px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .stage-title .step-number {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #1a73e8;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        /* 客户端-服务器展示 */
+        .connection-diagram {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 200px;
+            position: relative;
+        }
+        
+        .entity {
+            width: 160px;
+            text-align: center;
+            z-index: 2;
+        }
+        
+        .entity-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 12px;
+            font-size: 32px;
+            transition: all 0.3s ease;
+        }
+        
+        .client .entity-icon {
+            background: linear-gradient(135deg, #e8f0fe 0%, #d2e3fc 100%);
+            border: 2px solid #1a73e8;
+        }
+        
+        .server .entity-icon {
+            background: linear-gradient(135deg, #e6f4ea 0%, #ceead6 100%);
+            border: 2px solid #1e8e3e;
+        }
+        
+        .entity-label {
+            font-size: 15px;
+            font-weight: 600;
+            color: #202124;
+        }
+        
+        .entity-detail {
+            font-size: 12px;
+            color: #5f6368;
+            margin-top: 4px;
+        }
+        
+        /* 连接通道 */
+        .channel {
+            flex: 1;
+            height: 120px;
+            position: relative;
+            margin: 0 20px;
+        }
+        
+        .channel-line {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #dadce0;
+            transform: translateY(-50%);
+            border-radius: 2px;
+        }
+        
+        .channel-line.active {
+            background: linear-gradient(90deg, #1a73e8 0%, #1e8e3e 100%);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; box-shadow: 0 0 10px rgba(26,115,232,0.3); }
+            50% { opacity: 1; box-shadow: 0 0 20px rgba(26,115,232,0.5); }
+        }
+        
+        .packet {
+            position: absolute;
+            top: 50%;
+            width: 40px;
+            height: 28px;
+            background: #1a73e8;
+            border-radius: 6px;
+            transform: translateY(-50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            color: white;
+            font-weight: 600;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        
+        .packet.show {
+            opacity: 1;
+        }
+        
+        .packet.ack {
+            background: #1e8e3e;
+        }
+        
+        .packet.fin {
+            background: #d93025;
+        }
+        
+        /* TCP 握手步骤指示 */
+        .handshake-steps {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .step:hover {
+            border-color: #1a73e8;
+            transform: translateY(-2px);
+        }
+        
+        .step.active {
+            background: #e8f0fe;
+            border-color: #1a73e8;
+        }
+        
+        .step.completed {
+            background: #e6f4ea;
+            border-color: #1e8e3e;
+        }
+        
+        .step-number {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #dadce0;
+            color: #5f6368;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        .step.active .step-number,
+        .step.completed .step-number {
+            background: #1a73e8;
+            color: white;
+        }
+        
+        .step.completed .step-number {
+            background: #1e8e3e;
+        }
+        
+        .step-content {
+            text-align: left;
+        }
+        
+        .step-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #202124;
+        }
+        
+        .step-desc {
+            font-size: 11px;
+            color: #5f6368;
+            margin-top: 2px;
+        }
+        
+        /* 详细信息面板 */
+        .detail-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .detail-panel h3 {
+            font-size: 14px;
+            color: #202124;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .detail-panel h3::before {
+            content: "";
+            width: 4px;
+            height: 16px;
+            background: #1a73e8;
+            border-radius: 2px;
+        }
+        
+        .packet-detail {
+            background: #ffffff;
+            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid #e8eaed;
+            font-family: "SF Mono", Monaco, monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #3c4043;
+        }
+        
+        .packet-detail .field {
+            display: flex;
+            margin-bottom: 6px;
+        }
+        
+        .packet-detail .field:last-child {
+            margin-bottom: 0;
+        }
+        
+        .packet-detail .field-name {
+            color: #5f6368;
+            width: 120px;
+            flex-shrink: 0;
+        }
+        
+        .packet-detail .field-value {
+            color: #1a73e8;
+            font-weight: 500;
+        }
+        
+        .packet-detail .field-value.seq {
+            color: #1e8e3e;
+        }
+        
+        /* 控制按钮 */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: #1a73e8;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #1557b0;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(26,115,232,0.3);
+        }
+        
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #5f6368;
+            border: 1px solid #dadce0;
+        }
+        
+        .btn-secondary:hover {
+            background: #e8eaed;
+            color: #202124;
+        }
+        
+        /* HTTP 请求响应阶段 */
+        .http-phase {
+            margin-top: 30px;
+        }
+        
+        .http-request-response {
+            display: grid;
+            grid-template-columns: 1fr 60px 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+        
+        .http-card {
+            background: #ffffff;
+            border: 1px solid #e8eaed;
+            border-radius: 12px;
+            padding: 16px;
+            font-family: "SF Mono", monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        
+        .http-card.request {
+            border-left: 4px solid #1a73e8;
+        }
+        
+        .http-card.response {
+            border-left: 4px solid #1e8e3e;
+        }
+        
+        .http-card .line {
+            color: #3c4043;
+            margin-bottom: 4px;
+        }
+        
+        .http-card .line.method {
+            color: #1a73e8;
+            font-weight: 600;
+        }
+        
+        .http-card .line.status {
+            color: #1e8e3e;
+            font-weight: 600;
+        }
+        
+        .http-card .line.header {
+            color: #5f6368;
+        }
+        
+        .arrow-down {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+        
+        .arrow-down svg {
+            animation: bounce 1s ease-in-out infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(5px); }
+        }
+        
+        /* 连接池可视化 */
+        .connection-pool {
+            margin-top: 30px;
+        }
+        
+        .pool-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+        
+        .connection-slot {
+            background: #f8f9fa;
+            border: 2px solid #dadce0;
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .connection-slot.active {
+            background: #e8f0fe;
+            border-color: #1a73e8;
+        }
+        
+        .connection-slot.idle {
+            background: #e6f4ea;
+            border-color: #1e8e3e;
+        }
+        
+        .connection-slot.closed {
+            background: #fce8e6;
+            border-color: #d93025;
+            opacity: 0.6;
+        }
+        
+        .connection-slot .slot-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        
+        .connection-slot .slot-status {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .connection-slot.active .slot-status {
+            color: #1a73e8;
+        }
+        
+        .connection-slot.idle .slot-status {
+            color: #1e8e3e;
+        }
+        
+        .connection-slot.closed .slot-status {
+            color: #d93025;
+        }
+        
+        /* 标签页 */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e8eaed;
+            padding-bottom: 8px;
+        }
+        
+        .tab {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #5f6368;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            background: transparent;
+        }
+        
+        .tab:hover {
+            background: #f8f9fa;
+            color: #202124;
+        }
+        
+        .tab.active {
+            background: #e8f0fe;
+            color: #1a73e8;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* 说明文字 */
+        .explanation {
+            background: linear-gradient(135deg, #fef7e0 0%, #feefc3 100%);
+            border: 1px solid #feefc3;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-top: 20px;
+        }
+        
+        .explanation h4 {
+            font-size: 14px;
+            color: #202124;
+            margin-bottom: 8px;
+        }
+        
+        .explanation p {
+            font-size: 13px;
+            color: #3c4043;
+            line-height: 1.6;
+        }
+        
+        /* 时间轴 */
+        .timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+        
+        .timeline::before {
+            content: "";
+            position: absolute;
+            left: 8px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #dadce0;
+        }
+        
+        .timeline-item {
+            position: relative;
+            padding-bottom: 24px;
+        }
+        
+        .timeline-item:last-child {
+            padding-bottom: 0;
+        }
+        
+        .timeline-dot {
+            position: absolute;
+            left: -26px;
+            top: 4px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 3px solid #dadce0;
+            transition: all 0.3s ease;
+        }
+        
+        .timeline-item.active .timeline-dot {
+            border-color: #1a73e8;
+            background: #1a73e8;
+        }
+        
+        .timeline-item.completed .timeline-dot {
+            border-color: #1e8e3e;
+            background: #1e8e3e;
+        }
+        
+        .timeline-content {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px 16px;
+        }
+        
+        .timeline-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #202124;
+            margin-bottom: 4px;
+        }
+        
+        .timeline-desc {
+            font-size: 12px;
+            color: #5f6368;
+        }
+        
+        /* 统计信息 */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: #ffffff;
+            border: 1px solid #e8eaed;
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
+        }
+n        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1a73e8;
+            margin-bottom: 4px;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #5f6368;
+        }
+        
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .connection-diagram {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .channel {
+                width: 100%;
+                height: 80px;
+                margin: 0;
+            }
+            
+            .handshake-steps {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .http-request-response {
+                grid-template-columns: 1fr;
+            }
+            
+            .arrow-down {
+                transform: rotate(90deg);
+                height: 40px;
+            }
+            
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌐 HTTP 连接与释放过程可视化</h1>
+            <p>交互式演示 TCP 三次握手、HTTP 请求响应、连接池管理和四次挥手</p>
+        </div>
+
+        <!-- 标签页导航 -->
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('handshake')">🔗 TCP 三次握手</button>
+            <button class="tab" onclick="switchTab('http')">📡 HTTP 请求响应</button>
+            <button class="tab" onclick="switchTab('pool')">🏊 连接池管理</button>
+            <button class="tab" onclick="switchTab('close')">👋 四次挥手</button>
+        </div>
+
+        <!-- TCP 三次握手 -->
+        <div id="handshake" class="tab-content active">
+            <div class="stage">
+                <div class="stage-title">
+                    <span class="step-number">1</span>
+                    TCP 连接建立 - 三次握手
+                </div>
+                
+                <div class="connection-diagram">
+                    <div class="entity client">
+                        <div class="entity-icon">💻</div>
+                        <div class="entity-label">客户端</div>
+                        <div class="entity-detail">Browser / App</div>
+                    </div>
+                    
+                    <div class="channel" id="handshake-channel">
+                        <div class="channel-line"></div>
+                        <div class="packet" id="syn-packet" style="left: 10%;">SYN</div>
+                        <div class="packet ack" id="syn-ack-packet" style="right: 10%;">SYN-ACK</div>
+                        <div class="packet" id="ack-packet" style="left: 10%;">ACK</div>
+                    </div>
+                    
+                    <div class="entity server">
+                        <div class="entity-icon">🖥️</div>
+                        <div class="entity-label">服务器</div>
+                        <div class="entity-detail">Web Server</div>
+                    </div>
+                </div>
+
+                <div class="handshake-steps">
+                    <div class="step" id="step1" onclick="showStep(1)">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <div class="step-title">SYN</div>
+                            <div class="step-desc">客户端发送同步请求</div>
+                        </div>
+                    </div>
+                    <div class="step" id="step2" onclick="showStep(2)">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <div class="step-title">SYN-ACK</div>
+                            <div class="step-desc">服务器确认并同步</div>
+                        </div>
+                    </div>
+                    <div class="step" id="step3" onclick="showStep(3)">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <div class="step-title">ACK</div>
+                            <div class="step-desc">客户端确认连接</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-panel" id="handshake-detail">
+                    <h3>当前步骤详情</h3>
+                    <div class="packet-detail" id="packet-info">
+                        <div class="field">
+                            <span class="field-name">状态:</span>
+                            <span class="field-value">等待开始</span>
+                        </div>
+                        <div class="field">
+                            <span class="field-name">说明:</span>
+                            <span class="field-value">点击"开始演示"或上方步骤查看详情</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="startHandshake()">
+                        ▶️ 开始演示
+                    </button>
+                    <button class="btn btn-secondary" onclick="resetHandshake()">
+                        🔄 重置
+                    </button>
+                </div>
+
+                <div class="explanation">
+                    <h4>💡 为什么要三次握手？</h4>
+                    <p>TCP 是可靠的全双工通信协议，三次握手确保双方都能发送和接收数据。第一次 SYN 证明客户端能发，第二次 SYN-ACK 证明服务器能收发，第三次 ACK 证明客户端能收。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- HTTP 请求响应 -->
+        <div id="http" class="tab-content">
+            <div class="stage">
+                <div class="stage-title">
+                    <span class="step-number">2</span>
+                    HTTP 请求与响应
+                </div>
+
+                <div class="connection-diagram">
+                    <div class="entity client">
+                        <div class="entity-icon">🌐</div>
+                        <div class="entity-label">客户端</div>
+                        <div class="entity-detail">Chrome / Firefox</div>
+                    </div>
+                    
+                    <div class="channel" id="http-channel">
+                        <div class="channel-line active"></div>
+                        <div class="packet" id="req-packet" style="left: 10%;">GET</div>
+                        <div class="packet ack" id="resp-packet" style="right: 10%;">200</div>
+                    </div>
+                    
+                    <div class="entity server">
+                        <div class="entity-icon">🗄️</div>
+                        <div class="entity-label">服务器</div>
+                        <div class="entity-detail">Nginx / Apache</div>
+                    </div>
+                </div>
+
+                <div class="http-phase">
+                    <div class="http-request-response">
+                        <div class="http-card request">
+                            <div class="line method">GET /api/users HTTP/1.1</div>
+                            <div class="line header">Host: example.com</div>
+                            <div class="line header">Accept: application/json</div>
+                            <div class="line header">User-Agent: Mozilla/5.0</div>
+                            <div class="line header">Connection: keep-alive</div>
+                        </div>
+                        
+                        <div class="arrow-down">
+                            <svg width="40" height="60" viewBox="0 0 40 60">
+                                <defs>
+                                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                        <polygon points="0 0, 10 3.5, 0 7" fill="#1a73e8"/>
+                                    </marker>
+                                </defs>
+                                <line x1="20" y1="0" x2="20" y2="50" stroke="#1a73e8" stroke-width="2" marker-end="url(#arrowhead)"/>
+                            </svg>
+                        </div>
+                        
+                        <div class="http-card response">
+                            <div class="line status">HTTP/1.1 200 OK</div>
+                            <div class="line header">Content-Type: application/json</div>
+                            <div class="line header">Content-Length: 256</div>
+                            <div class="line header">Cache-Control: max-age=3600</div>
+                            <div class="line header">Connection: keep-alive</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-panel">
+                    <h3>HTTP/1.1 Keep-Alive 机制</h3>
+                    <div class="timeline">
+                        <div class="timeline-item completed">
+                            <div class="timeline-dot"></div>
+                            <div class="timeline-content">
+                                <div class="timeline-title">建立 TCP 连接</div>
+                                <div class="timeline-desc">三次握手完成，建立可靠连接</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item active">
+                            <div class="timeline-dot"></div>
+                            <div class="timeline-content">
+                                <div class="timeline-title">发送 HTTP 请求</div>
+                                <div class="timeline-desc">客户端发送请求行和请求头</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-dot"></div>
+                            <div class="timeline-content">
+                                <div class="timeline-title">服务器处理请求</div>
+                                <div class="timeline-desc">服务器解析请求并准备响应</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-dot"></div>
+                            <div class="timeline-content">
+                                <div class="timeline-title">返回 HTTP 响应</div>
+                                <div class="timeline-desc">服务器发送状态码和响应数据</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-dot"></div>
+                            <div class="timeline-content">
+                                <div class="timeline-title">连接复用或关闭</div>
+                                <div class="timeline-desc">根据 Connection 头部决定是否保持连接</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="animateHTTP()">
+                        ▶️ 演示请求流程
+                    </button>
+                </div>
+
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-value">~100ms</div>
+                        <div class="stat-label">TCP 握手</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">~50ms</div>
+                        <div class="stat-label">TLS 握手</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">~30ms</div>
+                        <div class="stat-label">TTFB</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">~200ms</div>
+                        <div class="stat-label">完整加载</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 连接池管理 -->
+        <div id="pool" class="tab-content">
+            <div class="stage">
+                <div class="stage-title">
+                    <span class="step-number">3</span>
+                    HTTP 连接池管理
+                </div>
+
+                <div class="connection-pool">
+                    <div class="pool-grid" id="pool-grid">
+                        <div class="connection-slot active">
+                            <div class="slot-icon">🔵</div>
+                            <div class="slot-status">Active</div>
+                        </div>
+                        <div class="connection-slot active">
+                            <div class="slot-icon">🔵</div>
+                            <div class="slot-status">Active</div>
+                        </div>
+                        <div class="connection-slot idle">
+                            <div class="slot-icon">🟢</div>
+                            <div class="slot-status">Idle</div>
+                        </div>
+                        <div class="connection-slot idle">
+                            <div class="slot-icon">🟢</div>
+                            <div class="slot-status">Idle</div>
+                        </div>
+                        <div class="connection-slot idle">
+                            <div class="slot-icon">🟢</div>
+                            <div class="slot-status">Idle</div>
+                        </div>
+                        <div class="connection-slot closed">
+                            <div class="slot-icon">🔴</div>
+                            <div class="slot-status">Closed</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-panel">
+                    <h3>连接池状态说明</h3>
+                    <div class="handshake-steps">
+                        <div class="step active">
+                            <div class="step-content">
+                                <div class="step-title">🔵 Active 活跃</div>
+                                <div class="step-desc">正在传输数据</div>
+                            </div>
+                        </div>
+                        <div class="step completed">
+                            <div class="step-content">
+                                <div class="step-title">🟢 Idle 空闲</div>
+                                <div class="step-desc">连接可用，等待复用</div>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-content">
+                                <div class="step-title">🔴 Closed 关闭</div>
+                                <div class="step-desc">连接已释放</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="explanation">
+                    <h4>💡 连接池的优势</h4>
+                    <p>连接池避免了频繁创建和关闭 TCP 连接的开销。HTTP/1.1 默认启用 Keep-Alive，允许在一个 TCP 连接上发送多个 HTTP 请求。现代浏览器通常会对同一域名维护 6-8 个持久连接。</p>
+                </div>
+
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="simulatePool()">
+                        ▶️ 模拟请求处理
+                    </button>
+                    <button class="btn btn-secondary" onclick="resetPool()">
+                        🔄 重置池状态
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 四次挥手 -->
+        <div id="close" class="tab-content">
+            <div class="stage">
+                <div class="stage-title">
+                    <span class="step-number">4</span>
+                    TCP 连接释放 - 四次挥手
+                </div>
+
+                <div class="connection-diagram">
+                    <div class="entity client">
+                        <div class="entity-icon">💻</div>
+                        <div class="entity-label">客户端</div>
+                        <div class="entity-detail">主动关闭方</div>
+                    </div>
+                    
+                    <div class="channel" id="close-channel">
+                        <div class="channel-line"></div>
+                        <div class="packet fin" id="fin1-packet" style="left: 10%;">FIN</div>
+                        <div class="packet ack" id="ack1-packet" style="right: 10%;">ACK</div>
+                        <div class="packet fin" id="fin2-packet" style="right: 10%;">FIN</div>
+                        <div class="packet ack" id="ack2-packet" style="left: 10%;">ACK</div>
+                    </div>
+                    
+                    <div class="entity server">
+                        <div class="entity-icon">🖥️</div>
+                        <div class="entity-label">服务器</div>
+                        <div class="entity-detail">被动关闭方</div>
+                    </div>
+                </div>
+
+                <div class="handshake-steps">
+                    <div class="step" id="close-step1" onclick="showCloseStep(1)">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <div class="step-title">FIN</div>
+                            <div class="step-desc">客户端请求关闭</div>
+                        </div>
+                    </div>
+                    <div class="step" id="close-step2" onclick="showCloseStep(2)">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <div class="step-title">ACK</div>
+                            <div class="step-desc">服务器确认</div>
+                        </div>
+                    </div>
+                    <div class="step" id="close-step3" onclick="showCloseStep(3)">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <div class="step-title">FIN</div>
+                            <div class="step-desc">服务器请求关闭</div>
+                        </div>
+                    </div>
+                    <div class="step" id="close-step4" onclick="showCloseStep(4)">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <div class="step-title">ACK</div>
+                            <div class="step-desc">客户端确认</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-panel">
+                    <h3>TCP 连接状态转换</h3>
+                    <div class="packet-detail">
+                        <div class="field">
+                            <span class="field-name">ESTABLISHED</span>
+                            <span class="field-value seq">→ 连接已建立</span>
+                        </div>
+                        <div class="field">
+                            <span class="field-name">FIN_WAIT_1</span>
+                            <span class="field-value">→ 发送 FIN 后</span>
+                        </div>
+                        <div class="field">
+                            <span class="field-name">FIN_WAIT_2</span>
+                            <span class="field-value">→ 收到 ACK 后</span>
+                        </div>
+                        <div class="field">
+                            <span class="field-name">TIME_WAIT</span>
+                            <span class="field-value">→ 收到 FIN 并发送 ACK</span>
+                        </div>
+                        <div class="field">
+                            <span class="field-name">CLOSED</span>
+                            <span class="field-value seq">→ 等待 2MSL 后关闭</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="startClose()">
+                        ▶️ 开始演示
+                    </button>
+                    <button class="btn btn-secondary" onclick="resetClose()">
+                        🔄 重置
+                    </button>
+                </div>
+
+                <div class="explanation">
+                    <h4>💡 为什么要四次挥手？</h4>
+                    <p>TCP 是全双工通信，双方都需要单独关闭自己的发送通道。TIME_WAIT 状态需要等待 2MSL（最大报文生存时间），确保最后的 ACK 能被对方收到，并处理迟到的报文。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 0;
+        let currentTab = 'handshake';
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tab).classList.add('active');
+            currentTab = tab;
+        }
+
+        // 三次握手演示
+        function startHandshake() {
+            resetHandshake();
+            currentStep = 1;
+            
+            // Step 1: SYN
+            setTimeout(() => {
+                showStep(1);
+                animatePacket('syn-packet', 'left', '10%', '80%');
+            }, 500);
+            
+            // Step 2: SYN-ACK
+            setTimeout(() => {
+                showStep(2);
+                animatePacket('syn-ack-packet', 'right', '10%', '80%');
+            }, 2500);
+            
+            // Step 3: ACK
+            setTimeout(() => {
+                showStep(3);
+                animatePacket('ack-packet', 'left', '10%', '80%');
+                document.querySelector('#handshake-channel .channel-line').classList.add('active');
+            }, 4500);
+        }
+
+        function showStep(step) {
+            document.querySelectorAll('.step').forEach((s, i) => {
+                s.classList.remove('active', 'completed');
+                if (i < step - 1) s.classList.add('completed');
+                if (i === step - 1) s.classList.add('active');
+            });
+            
+            updatePacketInfo(step);
+        }
+
+        function updatePacketInfo(step) {
+            const info = document.getElementById('packet-info');
+            const details = [
+                {
+                    status: '等待开始',
+                    desc: '点击"开始演示"或上方步骤查看详情'
+                },
+                {
+                    status: 'SYN (同步序列编号)',
+                    desc: '客户端发送 SYN 包，seq=x，进入 SYN_SENT 状态'
+                },
+                {
+                    status: 'SYN-ACK (同步确认)',
+                    desc: '服务器回复 SYN-ACK，seq=y, ack=x+1，进入 SYN_RECV 状态'
+                },
+                {
+                    status: 'ACK (确认)',
+                    desc: '客户端发送 ACK，ack=y+1，双方进入 ESTABLISHED 状态'
+                }
+            ];
+            
+            info.innerHTML = `
+                <div class="field">
+                    <span class="field-name">状态:</span>
+                    <span class="field-value">${details[step].status}</span>
+                </div>
+                <div class="field">
+                    <span class="field-name">说明:</span>
+                    <span class="field-value">${details[step].desc}</span>
+                </div>
+                <div class="field">
+                    <span class="field-name">序列号:</span>
+                    <span class="field-value seq">seq=${step === 1 ? 'x' : step === 2 ? 'y' : 'x+1'}, ack=${step === 2 ? 'x+1' : step === 3 ? 'y+1' : '-'}</span>
+                </div>
+            `;
+        }
+
+        function animatePacket(id, direction, start, end) {
+            const packet = document.getElementById(id);
+            packet.style.opacity = '1';
+            packet.style[direction] = start;
+            
+            setTimeout(() => {
+                packet.style.transition = 'all 1.5s ease-in-out';
+                packet.style[direction] = end;
+            }, 100);
+            
+            setTimeout(() => {
+                packet.style.opacity = '0';
+                packet.style[direction] = start;
+                packet.style.transition = 'all 0.3s ease';
+            }, 1600);
+        }
+
+        function resetHandshake() {
+            currentStep = 0;
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active', 'completed'));
+            document.querySelector('#handshake-channel .channel-line').classList.remove('active');
+            document.querySelectorAll('.packet').forEach(p => {
+                p.style.opacity = '0';
+                p.style.transition = 'all 0.3s ease';
+            });
+            updatePacketInfo(0);
+        }
+
+        // HTTP 请求演示
+        function animateHTTP() {
+            const reqPacket = document.getElementById('req-packet');
+            const respPacket = document.getElementById('resp-packet');
+            
+            // Request
+            reqPacket.style.opacity = '1';
+            reqPacket.style.left = '10%';
+            
+            setTimeout(() => {
+                reqPacket.style.transition = 'all 1s ease-in-out';
+                reqPacket.style.left = '80%';
+            }, 100);
+            
+            setTimeout(() => {
+                reqPacket.style.opacity = '0';
+                reqPacket.style.left = '10%';
+            }, 1200);
+            
+            // Response
+            setTimeout(() => {
+                respPacket.style.opacity = '1';
+                respPacket.style.right = '10%';
+                
+                setTimeout(() => {
+                    respPacket.style.transition = 'all 1s ease-in-out';
+                    respPacket.style.right = '80%';
+                }, 100);
+                
+                setTimeout(() => {
+                    respPacket.style.opacity = '0';
+                    respPacket.style.right = '10%';
+                    respPacket.style.transition = 'all 0.3s ease';
+                }, 1200);
+            }, 1500);
+        }
+
+        // 连接池演示
+        function simulatePool() {
+            const slots = document.querySelectorAll('.connection-slot');
+            let activeIndex = 0;
+            
+            const interval = setInterval(() => {
+                // Reset previous
+                slots.forEach(s => {
+                    if (!s.classList.contains('closed')) {
+                        s.classList.remove('active');
+                        s.classList.add('idle');
+                        s.querySelector('.slot-icon').textContent = '🟢';
+                        s.querySelector('.slot-status').textContent = 'Idle';
+                    }
+                });
+                
+                // Activate next
+                if (activeIndex < slots.length) {
+                    if (!slots[activeIndex].classList.contains('closed')) {
+                        slots[activeIndex].classList.remove('idle');
+                        slots[activeIndex].classList.add('active');
+                        slots[activeIndex].querySelector('.slot-icon').textContent = '🔵';
+                        slots[activeIndex].querySelector('.slot-status').textContent = 'Active';
+                    }
+                    activeIndex++;
+                } else {
+                    clearInterval(interval);
+                    setTimeout(resetPool, 1000);
+                }
+            }, 800);
+        }
+
+        function resetPool() {
+            const slots = document.querySelectorAll('.connection-slot');
+            slots[0].className = 'connection-slot active';
+            slots[0].querySelector('.slot-icon').textContent = '🔵';
+            slots[0].querySelector('.slot-status').textContent = 'Active';
+            
+            slots[1].className = 'connection-slot active';
+            slots[1].querySelector('.slot-icon').textContent = '🔵';
+            slots[1].querySelector('.slot-status').textContent = 'Active';
+            
+            for (let i = 2; i < 5; i++) {
+                slots[i].className = 'connection-slot idle';
+                slots[i].querySelector('.slot-icon').textContent = '🟢';
+                slots[i].querySelector('.slot-status').textContent = 'Idle';
+            }
+            
+            slots[5].className = 'connection-slot closed';
+            slots[5].querySelector('.slot-icon').textContent = '🔴';
+            slots[5].querySelector('.slot-status').textContent = 'Closed';
+        }
+
+        // 四次挥手演示
+        function startClose() {
+            resetClose();
+            
+            // Step 1: FIN from client
+            setTimeout(() => {
+                showCloseStep(1);
+                animatePacket('fin1-packet', 'left', '10%', '80%');
+            }, 500);
+            
+            // Step 2: ACK from server
+            setTimeout(() => {
+                showCloseStep(2);
+                animatePacket('ack1-packet', 'right', '10%', '80%');
+            }, 2500);
+            
+            // Step 3: FIN from server
+            setTimeout(() => {
+                showCloseStep(3);
+                animatePacket('fin2-packet', 'right', '10%', '80%');
+            }, 4500);
+            
+            // Step 4: ACK from client
+            setTimeout(() => {
+                showCloseStep(4);
+                animatePacket('ack2-packet', 'left', '10%', '80%');
+                document.querySelector('#close-channel .channel-line').style.background = '#dadce0';
+            }, 6500);
+        }
+
+        function showCloseStep(step) {
+            document.querySelectorAll('#close .step').forEach((s, i) => {
+                s.classList.remove('active', 'completed');
+                if (i < step - 1) s.classList.add('completed');
+                if (i === step - 1) s.classList.add('active');
+            });
+        }
+
+        function resetClose() {
+            document.querySelectorAll('#close .step').forEach(s => s.classList.remove('active', 'completed'));
+            document.querySelector('#close-channel .channel-line').style.background = '#dadce0';
+            document.querySelectorAll('#close .packet').forEach(p => {
+                p.style.opacity = '0';
+                p.style.transition = 'all 0.3s ease';
+            });
+        }
+    </script>
+</body>
+</html>

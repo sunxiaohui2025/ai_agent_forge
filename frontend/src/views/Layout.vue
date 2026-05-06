@@ -368,8 +368,17 @@ async function onDelete(c: any) {
   } catch {}
 }
 
-function onPickAgent(a: any) {
+async function onPickAgent(a: any) {
+  // Same agent: nothing to do.
+  if (a?.id === chat.currentAgent?.id) return
   chat.selectAgent(a)
+  // If there's an active conversation, force a brand-new one with the new agent
+  // so prior chat history (tied to the previous agent) doesn't bleed in.
+  // No active conv yet → defer creation until the user actually sends a message.
+  if (chat.currentConvId) {
+    try { await chat.newConv() } catch {}
+  }
+  if (router.currentRoute.value.path !== '/chat') router.push('/chat')
 }
 
 function onLogout() {
