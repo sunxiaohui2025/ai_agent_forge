@@ -249,7 +249,8 @@
           </div>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item @click="onLogout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item>
+              <el-dropdown-item @click="onChangePassword"><el-icon><Key /></el-icon>修改密码</el-dropdown-item>
+              <el-dropdown-item divided @click="onLogout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -264,7 +265,7 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import { api } from '@/api'
 import { useAuth } from '@/stores/auth'
 import { useChat } from '@/stores/chat'
@@ -384,6 +385,46 @@ async function onPickAgent(a: any) {
 function onLogout() {
   auth.logout()
   router.push('/login')
+}
+
+async function onChangePassword() {
+  let oldPwd = ''
+  try {
+    const r1 = await ElMessageBox.prompt('请输入原密码', '修改密码', {
+      inputType: 'password',
+      confirmButtonText: '下一步',
+      cancelButtonText: '取消',
+      inputValidator: (v) => (!!v && v.length >= 6) || '密码至少 6 位',
+    })
+    oldPwd = r1.value
+  } catch { return }
+  let newPwd = ''
+  try {
+    const r2 = await ElMessageBox.prompt('请输入新密码（不少于 6 位）', '修改密码', {
+      inputType: 'password',
+      confirmButtonText: '下一步',
+      cancelButtonText: '取消',
+      inputValidator: (v) => (!!v && v.length >= 6) || '密码至少 6 位',
+    })
+    newPwd = r2.value
+  } catch { return }
+  try {
+    const r3 = await ElMessageBox.prompt('请再次输入新密码', '修改密码', {
+      inputType: 'password',
+      confirmButtonText: '提交',
+      cancelButtonText: '取消',
+      inputValidator: (v) => v === newPwd || '两次密码不一致',
+    })
+    if (r3.value !== newPwd) return
+  } catch { return }
+  try {
+    await api.changePassword(oldPwd, newPwd)
+    ElMessage.success('密码已更新，请重新登录')
+    auth.logout()
+    router.push('/login')
+  } catch {
+    // interceptor shows error
+  }
 }
 </script>
 

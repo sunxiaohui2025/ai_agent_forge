@@ -24,6 +24,11 @@ class RefreshIn(BaseModel):
     refresh_token: str
 
 
+class ChangePasswordIn(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=6, max_length=128)
+
+
 # ---------- User / Role ----------
 class RoleOut(ORM):
     id: int

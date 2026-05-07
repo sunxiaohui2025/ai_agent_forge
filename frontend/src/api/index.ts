@@ -5,6 +5,8 @@ export const api = {
   login: (username: string, password: string) =>
     http.post('/api/auth/login', { username, password }).then((r) => r.data),
   me: () => http.get('/api/auth/me').then((r) => r.data),
+  changePassword: (old_password: string, new_password: string) =>
+    http.post('/api/auth/change-password', { old_password, new_password }).then((r) => r.data),
 
   // chat
   myAgents: () => http.get('/api/agents').then((r) => r.data),

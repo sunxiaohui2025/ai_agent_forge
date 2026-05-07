@@ -5,6 +5,14 @@ import path from 'node:path'
 export default defineConfig({
   plugins: [vue()],
   resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        mobile: path.resolve(__dirname, 'm.html'),
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
