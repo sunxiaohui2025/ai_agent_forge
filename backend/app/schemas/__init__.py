@@ -88,6 +88,7 @@ class UserOut(ORM):
     id: int
     username: str
     display_name: str | None = None
+    email: str | None = None
     role: RoleOut
     department_id: int | None = None
     department: DepartmentBrief | None = None
@@ -335,3 +336,96 @@ class PackApprovalOut(ORM):
 class PackApprovalDecision(BaseModel):
     decision: Literal["approved", "rejected"]
     reason: str | None = None
+
+
+# ---------- Task / TaskRun / Notification ----------
+ScheduleType = Literal["manual", "once", "cron"]
+ConcurrencyPolicy = Literal["skip", "queue"]
+NotifyChannel = Literal["inapp", "email"]
+NotifyOn = Literal["always", "success", "failure"]
+TaskRunStatus = Literal["pending", "running", "succeeded", "failed", "cancelled", "timeout", "skipped"]
+
+
+class TaskIn(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str | None = None
+    agent_id: int
+    prompt_text: str = ""
+    schedule_type: ScheduleType = "manual"
+    schedule_value: str | None = None
+    timezone: str = "Asia/Shanghai"
+    max_runtime_seconds: int = Field(default=1800, ge=10, le=24 * 3600)
+    concurrency_policy: ConcurrencyPolicy = "skip"
+    notify_channels: list[NotifyChannel] = Field(default_factory=lambda: ["inapp"])
+    notify_email_to: str | None = None
+    notify_on: NotifyOn = "always"
+    enabled: bool = True
+
+
+class TaskOut(ORM):
+    id: int
+    owner_user_id: int
+    agent_id: int
+    agent_name: str | None = None
+    name: str
+    description: str | None
+    prompt_text: str
+    schedule_type: str
+    schedule_value: str | None
+    timezone: str
+    max_runtime_seconds: int
+    concurrency_policy: str
+    notify_channels: list[str] = Field(default_factory=list)
+    notify_email_to: str | None = None
+    notify_on: str
+    enabled: bool
+    last_run_id: int | None = None
+    last_run_status: str | None = None
+    last_run_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaskRunOut(ORM):
+    id: int
+    task_id: int
+    run_no: int
+    triggered_by: str
+    triggered_user_id: int | None
+    status: str
+    conversation_id: int | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    duration_ms: int
+    tokens_in: int
+    tokens_out: int
+    summary: str | None
+    error_message: str | None
+    notified_at: datetime | None
+    created_at: datetime
+
+
+class TaskRunPage(BaseModel):
+    items: list[TaskRunOut]
+    total: int
+
+
+class NotificationOut(ORM):
+    id: int
+    type: str
+    title: str
+    body: str | None
+    link_url: str | None
+    detail_json: dict[str, Any] | None
+    read_at: datetime | None
+    created_at: datetime
+
+
+class NotificationPage(BaseModel):
+    items: list[NotificationOut]
+    total: int
+    unread: int
+
+
+class EmailUpdateIn(BaseModel):
+    email: str | None = Field(default=None, max_length=256)

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from ..db.session import get_db
 from ..db.models import User
 from ..core.security import verify_password, hash_password, create_access_token, create_refresh_token, decode_token
-from ..schemas import LoginIn, TokenOut, RefreshIn, UserOut, ChangePasswordIn
+from ..schemas import LoginIn, TokenOut, RefreshIn, UserOut, ChangePasswordIn, EmailUpdateIn
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -61,3 +61,18 @@ async def change_password(
     user.password_hash = hash_password(payload.new_password)
     await db.commit()
     return {"ok": True}
+
+
+@router.patch("/me/email", response_model=UserOut)
+async def update_email(
+    payload: EmailUpdateIn,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    email = (payload.email or "").strip() or None
+    if email and "@" not in email:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "邮箱格式不正确")
+    user.email = email
+    await db.commit()
+    await db.refresh(user)
+    return user

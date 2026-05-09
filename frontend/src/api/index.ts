@@ -7,6 +7,27 @@ export const api = {
   me: () => http.get('/api/auth/me').then((r) => r.data),
   changePassword: (old_password: string, new_password: string) =>
     http.post('/api/auth/change-password', { old_password, new_password }).then((r) => r.data),
+  updateEmail: (email: string | null) =>
+    http.patch('/api/auth/me/email', { email }).then((r) => r.data),
+
+  // tasks
+  tasks: () => http.get('/api/tasks').then((r) => r.data),
+  task: (id: number) => http.get(`/api/tasks/${id}`).then((r) => r.data),
+  createTask: (p: any) => http.post('/api/tasks', p).then((r) => r.data),
+  updateTask: (id: number, p: any) => http.patch(`/api/tasks/${id}`, p).then((r) => r.data),
+  deleteTask: (id: number) => http.delete(`/api/tasks/${id}`).then((r) => r.data),
+  runTask: (id: number) => http.post(`/api/tasks/${id}/run`).then((r) => r.data),
+  toggleTask: (id: number) => http.post(`/api/tasks/${id}/toggle`).then((r) => r.data),
+  taskRuns: (id: number, params: { limit?: number; offset?: number } = {}) =>
+    http.get(`/api/tasks/${id}/runs`, { params: { limit: 30, offset: 0, ...params } }).then((r) => r.data),
+  taskRun: (rid: number) => http.get(`/api/task-runs/${rid}`).then((r) => r.data),
+  cancelTaskRun: (rid: number) => http.post(`/api/task-runs/${rid}/cancel`).then((r) => r.data),
+
+  // notifications
+  notifications: (params: { unread?: number; limit?: number; offset?: number } = {}) =>
+    http.get('/api/notifications', { params: { limit: 30, offset: 0, ...params } }).then((r) => r.data),
+  markNotificationRead: (id: number) => http.post(`/api/notifications/${id}/read`).then((r) => r.data),
+  markAllNotificationsRead: () => http.post('/api/notifications/read-all').then((r) => r.data),
 
   // chat
   myAgents: () => http.get('/api/agents').then((r) => r.data),

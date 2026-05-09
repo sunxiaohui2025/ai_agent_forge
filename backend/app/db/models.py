@@ -27,6 +27,7 @@ class User(Base, TimestampMixin):
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(256))
     display_name: Mapped[str | None] = mapped_column(String(128))
+    email: Mapped[str | None] = mapped_column(String(256))
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"))
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"), index=True)
     status: Mapped[str] = mapped_column(String(16), default="active")  # active/disabled
@@ -265,3 +266,72 @@ class PackApproval(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------- Scheduled Tasks ----------
+class Task(Base, TimestampMixin):
+    __tablename__ = "tasks"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text)
+    prompt_text: Mapped[str] = mapped_column(Text, default="")
+
+    schedule_type: Mapped[str] = mapped_column(String(16), default="manual")  # manual / once / cron
+    schedule_value: Mapped[str | None] = mapped_column(String(128))           # cron expr or ISO datetime
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Shanghai")
+
+    max_runtime_seconds: Mapped[int] = mapped_column(Integer, default=1800)
+    concurrency_policy: Mapped[str] = mapped_column(String(16), default="skip")  # skip / queue
+    notify_channels_json: Mapped[list[str]] = mapped_column(JSON, default=list)  # ["inapp","email"]
+    notify_email_to: Mapped[str | None] = mapped_column(String(256))
+    notify_on: Mapped[str] = mapped_column(String(16), default="always")        # always / success / failure
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    last_run_id: Mapped[int | None] = mapped_column(BigInteger)
+    last_run_status: Mapped[str | None] = mapped_column(String(16))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TaskRun(Base):
+    __tablename__ = "task_runs"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    run_no: Mapped[int] = mapped_column(Integer, default=1)
+    triggered_by: Mapped[str] = mapped_column(String(16), default="manual")     # manual / cron
+    triggered_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    # pending / running / succeeded / failed / cancelled / timeout / skipped
+
+    conversation_id: Mapped[int | None] = mapped_column(ForeignKey("conversations.id", ondelete="SET NULL"))
+
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+    summary: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notify_status_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class Notification(Base):
+    """Generic in-app notification record."""
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    type: Mapped[str] = mapped_column(String(32), default="task_run")  # task_run / system
+    title: Mapped[str] = mapped_column(String(256))
+    body: Mapped[str | None] = mapped_column(Text)
+    link_url: Mapped[str | None] = mapped_column(String(512))
+    detail_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+

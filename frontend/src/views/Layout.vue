@@ -47,6 +47,9 @@
           <router-link to="/admin/mcp" class="rail-item" active-class="active">
             <el-icon :size="20"><Connection /></el-icon><span>MCP</span>
           </router-link>
+          <router-link to="/tasks" class="rail-item" active-class="active">
+            <el-icon :size="20"><AlarmClock /></el-icon><span>任务</span>
+          </router-link>
           <router-link to="/admin/models" class="rail-item" active-class="active">
             <el-icon :size="20"><Cpu /></el-icon><span>模型</span>
           </router-link>
@@ -74,6 +77,10 @@
             <span>智能体</span>
             <span v-if="chat.currentAgent" class="rail-suffix">{{ chat.currentAgent.name }}</span>
           </button>
+
+          <router-link to="/tasks" class="rail-item" active-class="active">
+            <el-icon :size="20"><AlarmClock /></el-icon><span>任务</span>
+          </router-link>
 
           <div class="rail-divider">对话历史</div>
           <div class="rail-history">
@@ -241,22 +248,26 @@
             <el-icon class="agent-chip-arrow"><ArrowDown /></el-icon>
           </div>
         </div>
-        <el-dropdown trigger="click">
-          <div class="user-chip">
-            <div class="avatar"><el-icon :size="16"><UserFilled /></el-icon></div>
-            <div class="user-meta">
-              <div class="name">{{ auth.user?.display_name || auth.user?.username }}</div>
-              <div class="role">{{ auth.user?.role?.name }}</div>
+        <div class="topbar-right">
+          <NotificationBell />
+          <el-dropdown trigger="click">
+            <div class="user-chip">
+              <div class="avatar"><el-icon :size="16"><UserFilled /></el-icon></div>
+              <div class="user-meta">
+                <div class="name">{{ auth.user?.display_name || auth.user?.username }}</div>
+                <div class="role">{{ auth.user?.role?.name }}</div>
+              </div>
+              <el-icon><ArrowDown /></el-icon>
             </div>
-            <el-icon><ArrowDown /></el-icon>
-          </div>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item @click="onChangePassword"><el-icon><Key /></el-icon>修改密码</el-dropdown-item>
-              <el-dropdown-item divided @click="onLogout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="onChangePassword"><el-icon><Key /></el-icon>修改密码</el-dropdown-item>
+                <el-dropdown-item @click="onUpdateEmail"><el-icon><Message /></el-icon>设置邮箱</el-dropdown-item>
+                <el-dropdown-item divided @click="onLogout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </header>
       <main class="content">
         <router-view />
@@ -272,6 +283,7 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import { api } from '@/api'
 import { useAuth } from '@/stores/auth'
 import { useChat } from '@/stores/chat'
+import NotificationBell from '@/components/NotificationBell.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -388,6 +400,21 @@ async function onPickAgent(a: any) {
 function onLogout() {
   auth.logout()
   router.push('/login')
+}
+
+async function onUpdateEmail() {
+  try {
+    const r = await ElMessageBox.prompt('用于任务通知接收', '设置邮箱', {
+      inputType: 'email',
+      inputValue: auth.user?.email || '',
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+      inputValidator: (v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || '邮箱格式不正确',
+    })
+    await api.updateEmail((r.value || '').trim() || null)
+    await auth.fetchMe()
+    ElMessage.success('已保存')
+  } catch {}
 }
 
 async function onChangePassword() {
@@ -684,6 +711,7 @@ async function onChangePassword() {
   background: var(--m-surface);
 }
 .topbar-left { display: flex; align-items: center; min-width: 0; }
+.topbar-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
 .agent-chip {
   display: inline-flex; align-items: center; gap: 10px;

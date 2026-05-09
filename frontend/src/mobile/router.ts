@@ -4,6 +4,9 @@ import { useMobileAuth } from './stores/auth'
 const routes = [
   { path: '/login', component: () => import('./views/Login.vue') },
   { path: '/chat', component: () => import('./views/Chat.vue') },
+  { path: '/tasks', component: () => import('./views/Tasks.vue') },
+  { path: '/tasks/:id', component: () => import('./views/TaskDetail.vue') },
+  { path: '/notifications', component: () => import('./views/Notifications.vue') },
   { path: '/me', component: () => import('./views/Me.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/chat' },
 ]

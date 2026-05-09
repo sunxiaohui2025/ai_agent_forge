@@ -146,6 +146,18 @@
         <span>新建对话</span>
       </button>
 
+      <div class="drawer-nav">
+        <button class="nav-item" @click="goRoute('/tasks')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>任务</span>
+        </button>
+        <button class="nav-item" @click="goRoute('/notifications')">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span>通知</span>
+          <span v-if="unreadCount > 0" class="badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+        </button>
+      </div>
+
       <div class="drawer-section-label">最近对话</div>
       <div class="drawer-list">
         <div v-if="!chat.convs.length" class="empty">暂无历史对话</div>
@@ -251,8 +263,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, nextTick, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import MarkdownIt from 'markdown-it'
 import { useMobileChat } from '../stores/chat'
 import { useMobileAuth } from '../stores/auth'
@@ -265,6 +277,7 @@ const md = new MarkdownIt({ breaks: true, linkify: true })
 const chat = useMobileChat()
 const auth = useMobileAuth()
 const router = useRouter()
+const route = useRoute()
 
 const input = ref('')
 const sending = ref(false)
@@ -282,9 +295,37 @@ const pwd = reactive({ old: '', next: '', confirm: '' })
 
 const previewFile = ref<any | null>(null)
 
+const unreadCount = ref(0)
+let unreadTimer: any = null
+
+async function refreshUnread() {
+  try {
+    const r = await api.notifications({ unread: 1, limit: 1 })
+    unreadCount.value = r.unread || 0
+  } catch {}
+}
+
+function goRoute(p: string) {
+  drawerOpen.value = false
+  router.push(p)
+}
+
 onMounted(async () => {
   if (!chat.loaded) await chat.loadInit()
+  // Deep-link: ?conv=N opens an existing conversation (e.g. from a task run)
+  const convQ = route.query.conv
+  const convId = Array.isArray(convQ) ? Number(convQ[0]) : Number(convQ)
+  if (convId && !Number.isNaN(convId) && convId !== chat.currentConvId) {
+    let conv: any = chat.convs.find((c: any) => c.id === convId)
+    if (!conv) conv = { id: convId }
+    try { await chat.selectConv(conv) } catch {}
+  }
   await scrollBottom()
+  await refreshUnread()
+  unreadTimer = setInterval(refreshUnread, 60_000)
+})
+onBeforeUnmount(() => {
+  if (unreadTimer) clearInterval(unreadTimer)
 })
 
 watch(() => chat.currentConvId, async () => { await scrollBottom() })
@@ -919,6 +960,29 @@ textarea {
   flex-shrink: 0;
 }
 .conv-new:active { background: rgba(66,133,244,.15); }
+
+.drawer-nav {
+  display: flex; flex-direction: column;
+  margin: 0 8px 8px;
+  gap: 2px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  height: 38px; padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13.5px; color: var(--m-text);
+  background: transparent;
+  position: relative;
+}
+.nav-item:active { background: var(--m-surface-variant); }
+.nav-item .badge {
+  position: absolute; right: 12px;
+  min-width: 16px; height: 16px; padding: 0 5px;
+  border-radius: 8px;
+  background: var(--m-danger); color: #fff;
+  font-size: 10px; font-weight: 600; line-height: 16px;
+  text-align: center;
+}
 
 .drawer-section-label {
   padding: 4px 18px 6px;

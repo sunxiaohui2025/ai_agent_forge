@@ -51,6 +51,8 @@ async def main():
             "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS parsed_at TIMESTAMPTZ",
             "ALTER TABLE uploaded_files ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ",
             "CREATE INDEX IF NOT EXISTS ix_uploaded_files_last_used_at ON uploaded_files (last_used_at)",
+            # users: optional contact email (for task notifications)
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(256)",
         ]:
             await conn.exec_driver_sql(stmt)
     async with SessionLocal() as db:

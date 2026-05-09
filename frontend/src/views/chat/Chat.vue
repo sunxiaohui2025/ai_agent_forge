@@ -177,6 +177,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, nextTick, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 import { useChat } from '@/stores/chat'
@@ -190,6 +191,7 @@ import { parseMessageContent } from '@/lib/widget-parser'
 
 const md = new MarkdownIt({ breaks: true, linkify: true })
 const chat = useChat()
+const route = useRoute()
 
 const input = ref('')
 const sending = ref(false)
@@ -200,6 +202,14 @@ function closePreview() { previewFile.value = null }
 
 onMounted(async () => {
   if (!chat.loaded) await chat.loadInit()
+  // Deep-link: /chat?conv=N opens an existing conversation (e.g. from a task run).
+  const convQuery = route.query.conv
+  const convId = Array.isArray(convQuery) ? Number(convQuery[0]) : Number(convQuery)
+  if (convId && !Number.isNaN(convId) && convId !== chat.currentConvId) {
+    let conv = chat.convs.find((c: any) => c.id === convId)
+    if (!conv) conv = { id: convId }
+    try { await chat.selectConv(conv) } catch {}
+  }
   await scrollBottom()
 })
 

@@ -80,6 +80,29 @@ export const api = {
   me: () => get('/api/auth/me'),
   changePassword: (old_password: string, new_password: string) =>
     post('/api/auth/change-password', { old_password, new_password }),
+  updateEmail: (email: string | null) => patch('/api/auth/me/email', { email }),
+
+  // tasks
+  tasks: () => get('/api/tasks'),
+  task: (id: number) => get(`/api/tasks/${id}`),
+  runTask: (id: number) => post(`/api/tasks/${id}/run`),
+  taskRuns: (id: number, params: { limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams()
+    qs.set('limit', String(params.limit ?? 30))
+    qs.set('offset', String(params.offset ?? 0))
+    return get(`/api/tasks/${id}/runs?${qs.toString()}`)
+  },
+
+  // notifications
+  notifications: (params: { unread?: number; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams()
+    if (params.unread != null) qs.set('unread', String(params.unread))
+    qs.set('limit', String(params.limit ?? 30))
+    qs.set('offset', String(params.offset ?? 0))
+    return get(`/api/notifications?${qs.toString()}`)
+  },
+  markNotificationRead: (id: number) => post(`/api/notifications/${id}/read`),
+  markAllNotificationsRead: () => post('/api/notifications/read-all'),
 
   // agents
   myAgents: () => get('/api/agents'),
