@@ -6,7 +6,7 @@
     </div>
     <el-table :data="rows" stripe @row-click="openTools">
       <el-table-column prop="id" label="ID" width="40" />
-      <el-table-column label="名称" min-width="200">
+      <el-table-column label="名称" min-width="160">
         <template #default="{ row }">
           <div style="display:flex;align-items:center;gap:10px;min-width:0">
             <div class="mcp-icon"><el-icon><Connection /></el-icon></div>
@@ -26,7 +26,7 @@
           <span v-else class="muted">—</span>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="100">
+      <el-table-column label="状态" width="120">
         <template #default="{ row }">
           <el-tag v-if="statuses[row.id] === 'ok'" type="success" size="small">已连接 · {{ statuses[row.id + '_count'] || 0 }}</el-tag>
           <el-tag v-else-if="statuses[row.id] === 'fail'" type="danger" size="small">连接失败</el-tag>
@@ -34,14 +34,18 @@
           <el-tag v-else type="info" size="small">未测试</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="启用" width="60" align="center">
+      <el-table-column label="启用" width="70" align="center">
         <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '是' : '否' }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="操作" width="340" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
           <div class="row-actions" @click.stop>
-            <el-button size="small" text @click.stop="openTools(row)">查看工具</el-button>
-            <el-button size="small" text @click.stop="testConnect(row)">测试连接</el-button>
+            <el-tooltip content="查看工具" placement="top">
+              <el-button size="small" text circle @click.stop="openTools(row)"><el-icon><View /></el-icon></el-button>
+            </el-tooltip>
+            <el-tooltip content="测试连接" placement="top">
+              <el-button size="small" text circle @click.stop="testConnect(row)"><el-icon><Connection /></el-icon></el-button>
+            </el-tooltip>
             <el-button size="small" text @click.stop="openEdit(row)">编辑</el-button>
             <el-button size="small" text @click.stop="onResummarize(row)">重新说明</el-button>
             <el-button size="small" text type="danger" @click.stop="onDelete(row)">删除</el-button>
@@ -264,7 +268,6 @@ async function openTools(row: any) {
   width: 36px; height: 36px; border-radius: 10px;
   background: var(--m-primary-soft); color: var(--m-primary);
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
 }
 
 .server-card {

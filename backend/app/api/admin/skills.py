@@ -4,7 +4,7 @@ import shutil
 import zipfile
 from pathlib import Path
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ...core.config import settings
@@ -15,6 +15,7 @@ from ...services.audit import audit
 from ...db.models import User
 from ...schemas import SkillIn, SkillOut
 from ...runtime.skill_loader import validate_composite_yaml
+from ...services.capability_summarizer import summarize_skill
 
 router = APIRouter(prefix="/api/admin/skills", tags=["admin-skills"])
 
@@ -42,27 +43,46 @@ async def list_skills(db: AsyncSession = Depends(get_db), _=Depends(require_admi
 
 
 @router.post("", response_model=SkillOut)
-async def create_skill(payload: SkillIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
+async def create_skill(payload: SkillIn, background_tasks: BackgroundTasks,
+                       db: AsyncSession = Depends(get_db),
+                       actor: User = Depends(require_admin_or_operator)):
     _validate(payload)
     if (await db.execute(select(Skill).where(Skill.code == payload.code))).scalar_one_or_none():
         raise HTTPException(400, "code 已存在")
     s = Skill(**payload.model_dump())
     await audit(db, actor.id, "skill.create", target_type="skill", target_id=None)
     db.add(s); await db.commit(); await db.refresh(s)
+    background_tasks.add_task(summarize_skill, s.id)
     return s
 
 
 @router.patch("/{sid}", response_model=SkillOut)
-async def update_skill(sid: int, payload: SkillIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
+async def update_skill(sid: int, payload: SkillIn, background_tasks: BackgroundTasks,
+                       db: AsyncSession = Depends(get_db),
+                       actor: User = Depends(require_admin_or_operator)):
     _validate(payload)
     s = (await db.execute(select(Skill).where(Skill.id == sid))).scalar_one_or_none()
     if not s:
         raise HTTPException(404, "不存在")
-    for k, v in payload.model_dump().items():
+    data = payload.model_dump()
+    # `user_summary` is admin-editable. Track whether they explicitly set it
+    # this turn so we can (a) stamp updated_at and (b) skip the auto-summarize
+    # task that would otherwise clobber the manual text.
+    manual_summary = (data.get("user_summary") or "").strip() if "user_summary" in data else None
+    for k, v in data.items():
+        if k == "user_summary":
+            continue  # handled below
         setattr(s, k, v)
     s.version += 1
+    if manual_summary:
+        from datetime import datetime as _dt
+        s.user_summary = manual_summary
+        s.user_summary_updated_at = _dt.utcnow()
     await audit(db, actor.id, "skill.update", target_type="skill", target_id=s.id)
     await db.commit(); await db.refresh(s)
+    # Only re-summarize when the admin did NOT manually edit the summary.
+    if not manual_summary:
+        background_tasks.add_task(summarize_skill, s.id)
     return s
 
 
@@ -109,6 +129,7 @@ def _find_skill_root(extracted: Path) -> Path:
 
 @router.post("/upload", response_model=SkillOut)
 async def upload_skill(
+    background_tasks: BackgroundTasks,
     code: str = Form(...),
     name: str = Form(...),
     description: str = Form(""),
@@ -179,6 +200,7 @@ async def upload_skill(
     await audit(db, actor.id, "skill.upload", target_type="skill", target_id=s.id,
                 detail={"code": code})
     await db.commit(); await db.refresh(s)
+    background_tasks.add_task(summarize_skill, s.id)
     return s
 
 
@@ -284,6 +306,7 @@ class SkillFileSave(_BM):
 @router.put("/{sid}/file")
 async def put_skill_file(
     sid: int, payload: SkillFileSave,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     actor: User = Depends(require_admin_or_operator),
 ):
@@ -337,4 +360,19 @@ async def put_skill_file(
                 detail={"path": payload.path, "old_size": len(old.encode('utf-8')),
                         "new_size": new_size})
     await db.commit()
+    if payload.path.lower() in ("skill.md", "readme.md"):
+        background_tasks.add_task(summarize_skill, s.id)
     return {"ok": True, "path": payload.path, "size": new_size, "version": s.version}
+
+
+@router.post("/{sid}/resummarize")
+async def resummarize_skill(sid: int, background_tasks: BackgroundTasks,
+                             db: AsyncSession = Depends(get_db),
+                             actor: User = Depends(require_admin_or_operator)):
+    s = (await db.execute(select(Skill).where(Skill.id == sid))).scalar_one_or_none()
+    if not s:
+        raise HTTPException(404, "不存在")
+    background_tasks.add_task(summarize_skill, s.id)
+    await audit(db, actor.id, "skill.resummarize", target_type="skill", target_id=s.id)
+    await db.commit()
+    return {"ok": True, "queued": True}

@@ -6,46 +6,44 @@
     </div>
     <el-table :data="rows" stripe @row-click="openTools">
       <el-table-column prop="id" label="ID" width="40" />
-      <el-table-column label="名称" min-width="200">
+      <el-table-column label="名称" min-width="160">
         <template #default="{ row }">
-          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <div style="display:flex;align-items:center;gap:10px">
             <div class="mcp-icon"><el-icon><Connection /></el-icon></div>
-            <div style="min-width:0">
-              <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="row.name">{{ row.name }}</div>
-              <div class="row-sub" :title="summarize(row)">{{ summarize(row) }}</div>
+            <div>
+              <div style="font-weight:500">{{ row.name }}</div>
+              <div style="font-size:12px;color:var(--m-text-secondary)">{{ summarize(row) }}</div>
             </div>
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="协议" width="80" align="center">
+      <el-table-column label="协议" width="100">
         <template #default="{ row }"><el-tag size="small">{{ row.transport }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="使用说明" min-width="160" show-overflow-tooltip>
+      <el-table-column label="使用说明" min-width="220">
         <template #default="{ row }">
-          <span v-if="row.user_summary">{{ row.user_summary }}</span>
-          <span v-else class="muted">—</span>
+          <div v-if="row.user_summary" class="summary-cell" :title="row.user_summary">{{ row.user_summary }}</div>
+          <span v-else class="muted">—（保存后自动生成）</span>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="100">
+      <el-table-column label="状态" width="120">
         <template #default="{ row }">
-          <el-tag v-if="statuses[row.id] === 'ok'" type="success" size="small">已连接 · {{ statuses[row.id + '_count'] || 0 }}</el-tag>
-          <el-tag v-else-if="statuses[row.id] === 'fail'" type="danger" size="small">连接失败</el-tag>
-          <el-tag v-else-if="statuses[row.id] === 'loading'" type="info" size="small">连接中…</el-tag>
-          <el-tag v-else type="info" size="small">未测试</el-tag>
+          <el-tag v-if="statuses[row.id] === 'ok'" type="success">已连接 · {{ statuses[row.id + '_count'] || 0 }} 工具</el-tag>
+          <el-tag v-else-if="statuses[row.id] === 'fail'" type="danger">连接失败</el-tag>
+          <el-tag v-else-if="statuses[row.id] === 'loading'" type="info">连接中...</el-tag>
+          <el-tag v-else type="info">未测试</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="启用" width="60" align="center">
-        <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '是' : '否' }}</el-tag></template>
+      <el-table-column label="启用" width="60">
+        <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '是' : '否' }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="操作" width="340" fixed="right">
+      <el-table-column label="操作" width="360">
         <template #default="{ row }">
-          <div class="row-actions" @click.stop>
-            <el-button size="small" text @click.stop="openTools(row)">查看工具</el-button>
-            <el-button size="small" text @click.stop="testConnect(row)">测试连接</el-button>
-            <el-button size="small" text @click.stop="openEdit(row)">编辑</el-button>
-            <el-button size="small" text @click.stop="onResummarize(row)">重新说明</el-button>
-            <el-button size="small" text type="danger" @click.stop="onDelete(row)">删除</el-button>
-          </div>
+          <el-button size="small" text @click.stop="openTools(row)"><el-icon><View /></el-icon>工具</el-button>
+          <el-button size="small" text @click.stop="testConnect(row)"><el-icon><Connection /></el-icon>测试</el-button>
+          <el-button size="small" text @click.stop="openEdit(row)">编辑</el-button>
+          <el-button size="small" text @click.stop="onResummarize(row)">重新生成说明</el-button>
+          <el-button size="small" text type="danger" @click.stop="onDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -246,25 +244,20 @@ async function openTools(row: any) {
 </script>
 
 <style scoped>
-.row-sub {
+.summary-cell {
   font-size: 12px;
+  line-height: 1.5;
   color: var(--m-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.row-actions {
-  display: flex; align-items: center; gap: 2px;
-  flex-wrap: nowrap;
-}
-.row-actions :deep(.el-button) { padding: 5px 8px; }
-.row-actions :deep(.el-button.is-circle) { padding: 5px; }
 .muted { color: var(--m-text-tertiary); font-size: 12px; }
 .mcp-icon {
   width: 36px; height: 36px; border-radius: 10px;
   background: var(--m-primary-soft); color: var(--m-primary);
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
 }
 
 .server-card {

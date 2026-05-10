@@ -155,6 +155,9 @@ class MCPOut(ORM):
     transport: str
     config_json: dict[str, Any]
     enabled: bool
+    user_summary: str | None = None
+    tool_summaries_json: dict[str, Any] | None = None
+    user_summary_updated_at: datetime | None = None
 
 
 # ---------- Skill ----------
@@ -165,6 +168,9 @@ class SkillIn(BaseModel):
     type: Literal["atomic", "composite"]
     source_json: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
+    # Optional: admin-edited usage summary. When provided we persist it
+    # verbatim and skip the auto-summarize task so it isn't overwritten.
+    user_summary: str | None = None
 
 
 class SkillOut(ORM):
@@ -176,6 +182,8 @@ class SkillOut(ORM):
     source_json: dict[str, Any]
     enabled: bool
     version: int
+    user_summary: str | None = None
+    user_summary_updated_at: datetime | None = None
 
 
 # ---------- Agent ----------
@@ -191,7 +199,7 @@ class AgentIn(BaseModel):
     default_model_id: int | None = None
     fallback_model_id: int | None = None
     upload_policy_json: dict[str, Any] = Field(default_factory=dict)
-    max_turns: int = Field(default=5, ge=1, le=100)
+    max_turns: int = Field(default=15, ge=1, le=100)
     effort: EffortLevel = "medium"
     enabled: bool = True
     is_default: bool = False
@@ -211,7 +219,7 @@ class AgentOut(ORM):
     default_model_id: int | None
     fallback_model_id: int | None
     upload_policy_json: dict[str, Any]
-    max_turns: int = 5
+    max_turns: int = 15
     effort: EffortLevel = "medium"
     enabled: bool
     is_default: bool = False

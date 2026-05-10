@@ -25,7 +25,12 @@
       </div>
 
       <template v-else>
-        <div v-for="m in chat.messages" :key="m.id || m._tmp" :class="['msg', m.role]">
+        <div
+          v-for="m in chat.messages"
+          v-show="!(m.role === 'user' && m.content_json?.hidden)"
+          :key="m.id || m._tmp"
+          :class="['msg', m.role]"
+        >
           <div class="bubble-stack">
             <div v-if="isWaiting(m)" class="thinking-pill">
               <span>{{ m._meta ? '正在思考' : '正在连接智能体' }}</span>
@@ -516,8 +521,8 @@ function onLogout() {
   router.replace('/login')
 }
 
-// UI Schema → Agent. Sends a [UI_ACTION] message that the backend dispatches
-// directly to the tool, bypassing LLM. Mirrors PC Chat.vue behavior.
+// UI Schema → Agent. Carries [UI_ACTION] (call tool, skip LLM) or [UI_MSG]
+// (run LLM with synthetic user text, hidden from transcript). No local user bubble.
 async function onAgentCall(text: string) {
   if (!chat.currentAgent || sending.value) return
   if (!chat.currentConvId) await chat.ensureConv()

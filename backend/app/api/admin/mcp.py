@@ -1,11 +1,12 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ...db.session import get_db
 from ...db.models import MCPConnector
 from ...deps import require_admin_or_operator
 from ...services.audit import audit
+from ...services.capability_summarizer import summarize_mcp
 from ...db.models import User
 from ...schemas import MCPIn, MCPOut
 
@@ -18,17 +19,22 @@ async def list_mcp(db: AsyncSession = Depends(get_db), _=Depends(require_admin_o
 
 
 @router.post("", response_model=MCPOut)
-async def create_mcp(payload: MCPIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
+async def create_mcp(payload: MCPIn, background_tasks: BackgroundTasks,
+                     db: AsyncSession = Depends(get_db),
+                     actor: User = Depends(require_admin_or_operator)):
     if (await db.execute(select(MCPConnector).where(MCPConnector.name == payload.name))).scalar_one_or_none():
         raise HTTPException(400, "名称已存在")
     m = MCPConnector(**payload.model_dump())
     await audit(db, actor.id, "mcp.create", target_type="mcp", target_id=None)
     db.add(m); await db.commit(); await db.refresh(m)
+    background_tasks.add_task(summarize_mcp, m.id)
     return m
 
 
 @router.patch("/{mid}", response_model=MCPOut)
-async def update_mcp(mid: int, payload: MCPIn, db: AsyncSession = Depends(get_db), actor: User = Depends(require_admin_or_operator)):
+async def update_mcp(mid: int, payload: MCPIn, background_tasks: BackgroundTasks,
+                     db: AsyncSession = Depends(get_db),
+                     actor: User = Depends(require_admin_or_operator)):
     m = (await db.execute(select(MCPConnector).where(MCPConnector.id == mid))).scalar_one_or_none()
     if not m:
         raise HTTPException(404, "不存在")
@@ -36,6 +42,7 @@ async def update_mcp(mid: int, payload: MCPIn, db: AsyncSession = Depends(get_db
         setattr(m, k, v)
     await audit(db, actor.id, "mcp.update", target_type="mcp", target_id=m.id)
     await db.commit(); await db.refresh(m)
+    background_tasks.add_task(summarize_mcp, m.id)
     return m
 
 
@@ -72,3 +79,16 @@ async def get_mcp_tools(mid: int, db: AsyncSession = Depends(get_db), _=Depends(
         return await list_mcp_tools(m, timeout=20.0)
     except Exception as e:
         raise HTTPException(400, f"连接失败: {e}")
+
+
+@router.post("/{mid}/resummarize")
+async def resummarize_mcp(mid: int, background_tasks: BackgroundTasks,
+                          db: AsyncSession = Depends(get_db),
+                          actor: User = Depends(require_admin_or_operator)):
+    m = (await db.execute(select(MCPConnector).where(MCPConnector.id == mid))).scalar_one_or_none()
+    if not m:
+        raise HTTPException(404, "不存在")
+    background_tasks.add_task(summarize_mcp, m.id)
+    await audit(db, actor.id, "mcp.resummarize", target_type="mcp", target_id=m.id)
+    await db.commit()
+    return {"ok": True, "queued": True}

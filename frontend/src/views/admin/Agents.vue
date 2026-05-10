@@ -46,8 +46,30 @@
       <el-form :model="form" label-width="120px">
         <el-form-item label="编码"><el-input v-model="form.code" /></el-form-item>
         <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
-        <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="2" /></el-form-item>
-        <el-form-item label="System Prompt"><el-input v-model="form.system_prompt" type="textarea" :rows="4" /></el-form-item>
+        <el-form-item label="描述">
+          <div class="polish-wrap">
+            <el-input v-model="form.description" type="textarea" :rows="3"
+                      placeholder="一句话介绍这个智能体；可点击右下角的「✨ AI 润色」自动生成简介 + 2 个示例问题" />
+            <button type="button" class="polish-btn"
+                    :disabled="polishing.description"
+                    @click="onPolish('description')">
+              <span v-if="polishing.description">润色中…</span>
+              <span v-else>✨ AI 润色</span>
+            </button>
+          </div>
+        </el-form-item>
+        <el-form-item label="System Prompt">
+          <div class="polish-wrap">
+            <el-input v-model="form.system_prompt" type="textarea" :rows="6"
+                      placeholder="给智能体的系统提示词；可点击右下角的「✨ AI 润色」让 AI 帮你结构化" />
+            <button type="button" class="polish-btn"
+                    :disabled="polishing.system_prompt"
+                    @click="onPolish('system_prompt')">
+              <span v-if="polishing.system_prompt">润色中…</span>
+              <span v-else>✨ AI 润色</span>
+            </button>
+          </div>
+        </el-form-item>
         <el-form-item label="默认模型">
           <el-select v-model="form.default_model_id" clearable>
             <el-option v-for="m in models" :key="m.id" :label="m.code" :value="m.id" />
@@ -60,7 +82,7 @@
         </el-form-item>
         <el-form-item label="最大轮次">
           <el-input-number v-model="form.max_turns" :min="1" :max="100" :step="1" controls-position="right" />
-          <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">轮 · 一次对话内允许的工具调用循环上限,默认 5</span>
+          <span style="margin-left:8px;font-size:12px;color:var(--m-text-secondary)">轮 · 一次对话内允许的工具调用循环上限,默认 15</span>
         </el-form-item>
         <el-form-item label="努力程度">
           <el-select v-model="form.effort" style="width:220px">
@@ -133,12 +155,36 @@ const form = reactive<any>(emptyForm())
 const extText = ref('')
 const maxSizeMb = ref<number>(0)
 const maxFilesPerSend = ref<number>(0)
+const polishing = reactive({ description: false, system_prompt: false })
+
+async function onPolish(kind: 'description' | 'system_prompt') {
+  if (polishing[kind]) return
+  polishing[kind] = true
+  try {
+    const r = await api.polishAgentText({
+      kind,
+      text: (form as any)[kind] || '',
+      agent_name: form.name || undefined,
+      model_id: form.default_model_id || undefined,
+    })
+    if (r?.text) {
+      ;(form as any)[kind] = r.text
+      ElMessage.success('已润色')
+    } else {
+      ElMessage.warning('润色返回为空')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '润色失败')
+  } finally {
+    polishing[kind] = false
+  }
+}
 
 function emptyForm() {
   return {
     code: '', name: '', description: '', icon: '', system_prompt: '',
     default_model_id: null, fallback_model_id: null,
-    upload_policy_json: {}, max_turns: 5, effort: 'medium',
+    upload_policy_json: {}, max_turns: 15, effort: 'medium',
     enabled: true, is_default: false,
     skill_ids: [], mcp_ids: [], pack_ids: [], role_ids: [],
   }
@@ -160,14 +206,14 @@ function openCreate() {
   editing.value = null
   Object.assign(form, emptyForm())
   extText.value = ''
-  maxSizeMb.value = 0
-  maxFilesPerSend.value = 0
+  maxSizeMb.value = 5
+  maxFilesPerSend.value = 5
   visible.value = true
 }
 function openEdit(row: any) {
   editing.value = row
   Object.assign(form, emptyForm(), JSON.parse(JSON.stringify(row)))
-  if (form.max_turns == null) form.max_turns = 5
+  if (form.max_turns == null) form.max_turns = 15
   if (!form.effort) form.effort = 'medium'
   const policy = row.upload_policy_json || {}
   extText.value = (policy.allowed_ext || []).join(',')
@@ -196,4 +242,30 @@ async function onDelete(row: any) {
 
 <style scoped>
 .muted { color: var(--m-text-tertiary); }
+
+/* AI polish — button sits in the bottom-right corner of the textarea */
+.polish-wrap { position: relative; width: 100%; }
+.polish-btn {
+  position: absolute;
+  right: 8px; bottom: 8px;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid #dadce0;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1a73e8;
+  cursor: pointer;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+  z-index: 2;
+  user-select: none;
+}
+.polish-btn:hover:not(:disabled) {
+  background: #e8f0fe;
+  border-color: #aecbfa;
+  box-shadow: 0 1px 2px rgba(60,64,67,.1);
+}
+.polish-btn:disabled { color: #80868b; cursor: progress; }
+.polish-wrap :deep(.el-textarea__inner) { padding-bottom: 36px; }
 </style>

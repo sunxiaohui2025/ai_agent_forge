@@ -67,6 +67,9 @@ class MCPConnector(Base, TimestampMixin):
     transport: Mapped[str] = mapped_column(String(16))  # stdio/sse/http
     config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    user_summary: Mapped[str | None] = mapped_column(Text, default=None)
+    tool_summaries_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)
+    user_summary_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
 
 class Skill(Base, TimestampMixin):
@@ -80,6 +83,8 @@ class Skill(Base, TimestampMixin):
     source_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
+    user_summary: Mapped[str | None] = mapped_column(Text, default=None)
+    user_summary_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
 
 class Agent(Base, TimestampMixin):
@@ -93,7 +98,7 @@ class Agent(Base, TimestampMixin):
     default_model_id: Mapped[int | None] = mapped_column(ForeignKey("models.id"))
     fallback_model_id: Mapped[int | None] = mapped_column(ForeignKey("models.id"))
     upload_policy_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    max_turns: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    max_turns: Mapped[int] = mapped_column(Integer, default=15, server_default="15")
     effort: Mapped[str] = mapped_column(String(16), default="medium", server_default="medium")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)

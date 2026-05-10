@@ -142,43 +142,51 @@
             <div class="agent-row">
               <span class="agent-name">{{ a.name }}</span>
               <el-tag v-if="a.id === chat.defaultAgent?.id" size="small" effect="light" type="primary">默认</el-tag>
+              <a class="agent-learn" @click.stop="openAgentCapabilities(a.id)">
+                <el-icon :size="12"><InfoFilled /></el-icon>
+                <span>了解</span>
+              </a>
               <el-icon v-if="a.id === chat.currentAgent?.id" class="agent-check"><Check /></el-icon>
             </div>
-            <div class="agent-desc">{{ a.description || a.code || '暂无介绍' }}</div>
+            <div class="agent-desc" :title="a.description || a.code || ''">{{ a.description || a.code || '暂无介绍' }}</div>
 
             <div class="agent-caps" @click.stop>
-              <!-- Model -->
-              <span class="cap-item">
-                <el-icon :size="13"><Cpu /></el-icon>
-                <span class="cap-label">模型:</span>
-                <span class="cap-value">{{ capModel(a.id) }}</span>
-              </span>
+              <!-- Row 1: model (single line, name truncates with …) -->
+              <div class="cap-row cap-row-model">
+                <span class="cap-item">
+                  <el-icon :size="13"><Cpu /></el-icon>
+                  <span class="cap-label">模型:</span>
+                  <span class="cap-value" :title="capModel(a.id)">{{ capModel(a.id) }}</span>
+                </span>
+              </div>
 
-              <!-- Skills popover -->
-              <el-popover
-                placement="right-start"
-                :width="320"
-                trigger="click"
-                @before-enter="ensureCaps(a.id)"
-              >
-                <template #reference>
-                  <a class="cap-link" @click.stop>
-                    <el-icon :size="13"><MagicStick /></el-icon>
-                    技能 ({{ a.skill_ids?.length || 0 }})
-                  </a>
-                </template>
-                <div class="pop-body">
-                  <div class="pop-title">技能 ({{ a.skill_ids?.length || 0 }})</div>
-                  <div v-if="capsLoading[a.id]" class="pop-empty">加载中…</div>
-                  <div v-else-if="!caps[a.id]?.skills?.length" class="pop-empty">未挂载技能</div>
-                  <div v-else class="pop-list">
-                    <div v-for="s in caps[a.id].skills" :key="s.id" class="pop-row">
-                      <div class="pop-row-head">
-                        <span class="pop-name">{{ s.name }}</span>
-                        <el-tag size="small" effect="light">{{ s.type }}</el-tag>
+              <!-- Row 2: skills + MCP popovers -->
+              <div class="cap-row cap-row-tools">
+                <!-- Skills popover -->
+                <el-popover
+                  placement="right-start"
+                  :width="320"
+                  trigger="click"
+                  @before-enter="ensureCaps(a.id)"
+                >
+                  <template #reference>
+                    <a class="cap-link" @click.stop>
+                      <el-icon :size="13"><MagicStick /></el-icon>
+                      技能 ({{ a.skill_ids?.length || 0 }})
+                    </a>
+                  </template>
+                  <div class="pop-body">
+                    <div class="pop-title">技能 ({{ a.skill_ids?.length || 0 }})</div>
+                    <div v-if="capsLoading[a.id]" class="pop-empty">加载中…</div>
+                    <div v-else-if="!caps[a.id]?.skills?.length" class="pop-empty">未挂载技能</div>
+                    <div v-else class="pop-list">
+                      <div v-for="s in caps[a.id].skills" :key="s.id" class="pop-row">
+                        <div class="pop-row-head">
+                          <span class="pop-name">{{ s.name }}</span>
+                          <el-tag size="small" effect="light">{{ s.type }}</el-tag>
+                        </div>
+                        <div class="pop-desc">{{ s.description || s.code || '暂无描述' }}</div>
                       </div>
-                      <div class="pop-desc">{{ s.description || s.code || '暂无描述' }}</div>
-                    </div>
                   </div>
                 </div>
               </el-popover>
@@ -229,6 +237,7 @@
                   </div>
                 </div>
               </el-popover>
+              </div><!-- /cap-row-tools -->
             </div>
           </div>
         </div>
@@ -273,6 +282,7 @@
         <router-view />
       </main>
     </div>
+    <AgentCapabilityDrawer v-model="capDrawerVisible" :agent-id="capDrawerAgentId" />
   </div>
 </template>
 
@@ -280,10 +290,12 @@
 import { ref, onMounted, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
+import { InfoFilled } from '@element-plus/icons-vue'
 import { api } from '@/api'
 import { useAuth } from '@/stores/auth'
 import { useChat } from '@/stores/chat'
 import NotificationBell from '@/components/NotificationBell.vue'
+import AgentCapabilityDrawer from '@/components/AgentCapabilityDrawer.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -295,6 +307,12 @@ const subPanel = ref<'history' | 'agent' | null>(null)
 // per-agent capability cache (model + skills + mcps), populated lazily on popover open
 const caps = reactive<Record<number, any>>({})
 const capsLoading = reactive<Record<number, boolean>>({})
+const capDrawerVisible = ref(false)
+const capDrawerAgentId = ref<number | null>(null)
+function openAgentCapabilities(agentId: number) {
+  capDrawerAgentId.value = agentId
+  capDrawerVisible.value = true
+}
 // per-(agent,mcp) tool cache, populated only when user clicks "查看工具"
 const mcpTools = reactive<Record<string, any[]>>({})
 const mcpToolsLoading = reactive<Record<string, boolean>>({})
@@ -625,24 +643,57 @@ async function onChangePassword() {
 .agent-row { display: flex; align-items: center; gap: 6px; }
 .agent-name { font-size: 14px; font-weight: 500; color: var(--m-text); }
 .agent-check { color: var(--m-primary); margin-left: auto; }
+.agent-learn {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; color: var(--m-text-secondary); cursor: pointer;
+  padding: 2px 6px; border-radius: 10px; background: var(--m-bg-soft);
+  transition: background .15s, color .15s;
+}
+.agent-learn:hover { background: var(--m-primary-soft); color: var(--m-primary); }
 .agent-desc {
   margin-top: 4px;
   font-size: 12px; line-height: 1.5;
   color: var(--m-text-secondary);
   word-break: break-word;
+  /* Clamp to 3 lines — longer descriptions truncate with … */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .agent-caps {
   margin-top: 8px;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+  display: flex; flex-direction: column; gap: 6px;
   font-size: 12px;
+  min-width: 0;
+}
+.cap-row {
+  display: flex; align-items: center; gap: 14px;
+  min-width: 0;
+}
+.cap-row-model {
+  /* keep model on a single line; .cap-value truncates with ellipsis */
+  flex-wrap: nowrap;
+}
+.cap-row-tools {
+  flex-wrap: wrap;
 }
 .cap-item {
   display: inline-flex; align-items: center; gap: 4px;
   color: var(--m-text-secondary);
+  min-width: 0;
+  max-width: 100%;
 }
-.cap-label { color: var(--m-text-tertiary); }
-.cap-value { color: var(--m-text); font-weight: 500; }
+.cap-label { color: var(--m-text-tertiary); flex-shrink: 0; }
+.cap-value {
+  color: var(--m-text); font-weight: 500;
+  /* truncate long model ids with … */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 .cap-link {
   display: inline-flex; align-items: center; gap: 4px;
   color: var(--m-primary);

@@ -23,6 +23,18 @@ export interface ActionDef {
   label: string
   trigger: ActionTrigger
   agent_call: boolean
+  /** How the action's payload is delivered to the backend.
+   *   - undefined / 'tool' (legacy): when agent_call=true, route via [UI_ACTION]
+   *     directly to the tool, bypassing the LLM.
+   *   - 'message': render `message_template` with the resolved params and post
+   *     it as a normal user turn (LLM decides what to do next). The transcript
+   *     hides this synthetic user bubble.
+   */
+  submit_as?: 'tool' | 'message'
+  /** Template for submit_as='message'. Supports `{{key}}` placeholders that
+   *  resolve from the action's params (after params_from / params_map). Missing
+   *  keys collapse to empty string. */
+  message_template?: string
   tool?: string
   params_from?: string  // JSON pointer-ish: "/items/{index}/id" or "/" for whole data_model
   /** Field-name remapping applied AFTER params_from resolves to an object.

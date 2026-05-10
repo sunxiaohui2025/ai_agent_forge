@@ -45,7 +45,17 @@ const props = defineProps<{ schema: UIMessage; onAction: (a: ActionDef, params: 
 // Initialize form fields with defaults
 const init: Record<string, any> = { ...(props.schema.data_model || {}) }
 for (const c of (props.schema.components || [])) {
-  if (init[c.id] === undefined) init[c.id] = c.props?.default ?? ''
+  if (init[c.id] !== undefined) continue
+  if (c.props?.default !== undefined) {
+    init[c.id] = c.props.default
+  } else if (c.type === 'Checkbox') {
+    // el-checkbox-group requires its v-model to be an array.
+    init[c.id] = []
+  } else if (c.type === 'InputNumber') {
+    init[c.id] = null
+  } else {
+    init[c.id] = ''
+  }
 }
 const form = reactive(init)
 

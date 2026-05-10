@@ -90,6 +90,7 @@ export const api = {
   deleteMcp: (id: number) => http.delete(`/api/admin/mcp/${id}`).then((r) => r.data),
   pingMcp: (id: number) => http.post(`/api/admin/mcp/${id}/ping`).then((r) => r.data),
   mcpTools: (id: number) => http.get(`/api/admin/mcp/${id}/tools`).then((r) => r.data),
+  resummarizeMcp: (id: number) => http.post(`/api/admin/mcp/${id}/resummarize`).then((r) => r.data),
 
   skills: () => http.get('/api/admin/skills').then((r) => r.data),
   createSkill: (p: any) => http.post('/api/admin/skills', p).then((r) => r.data),
@@ -109,6 +110,7 @@ export const api = {
     http.get(`/api/admin/skills/${id}/file`, { params: { path } }).then((r) => r.data),
   saveSkillFile: (id: number, path: string, content: string) =>
     http.put(`/api/admin/skills/${id}/file`, { path, content }).then((r) => r.data),
+  resummarizeSkill: (id: number) => http.post(`/api/admin/skills/${id}/resummarize`).then((r) => r.data),
 
   packs: () => http.get('/api/admin/packs').then((r) => r.data),
   createPack: (p: any) => http.post('/api/admin/packs', p).then((r) => r.data),
@@ -123,6 +125,8 @@ export const api = {
   createAgent: (p: any) => http.post('/api/admin/agents', p).then((r) => r.data),
   updateAgent: (id: number, p: any) => http.patch(`/api/admin/agents/${id}`, p).then((r) => r.data),
   deleteAgent: (id: number) => http.delete(`/api/admin/agents/${id}`).then((r) => r.data),
+  polishAgentText: (p: { kind: 'description' | 'system_prompt'; text: string; agent_name?: string; model_id?: number }) =>
+    http.post('/api/admin/agents/polish', p).then((r) => r.data),
 
   callLogs: (params: { limit?: number; offset?: number; user_id?: number; agent_id?: number } = {}) =>
     http.get('/api/admin/logs/calls', { params: { limit: 20, offset: 0, ...params } }).then((r) => r.data),

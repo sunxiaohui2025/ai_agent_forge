@@ -264,7 +264,6 @@ async function openTools(row: any) {
   width: 36px; height: 36px; border-radius: 10px;
   background: var(--m-primary-soft); color: var(--m-primary);
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
 }
 
 .server-card {

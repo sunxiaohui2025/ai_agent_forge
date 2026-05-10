@@ -34,10 +34,10 @@
           <el-tag v-else type="info" size="small">未测试</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="启用" width="60" align="center">
+      <el-table-column label="启用" width="70" align="center">
         <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '是' : '否' }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="操作" width="340" fixed="right">
+      <el-table-column label="操作" width="320" fixed="right">
         <template #default="{ row }">
           <div class="row-actions" @click.stop>
             <el-button size="small" text @click.stop="openTools(row)">查看工具</el-button>
@@ -264,7 +264,6 @@ async function openTools(row: any) {
   width: 36px; height: 36px; border-radius: 10px;
   background: var(--m-primary-soft); color: var(--m-primary);
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
 }
 
 .server-card {

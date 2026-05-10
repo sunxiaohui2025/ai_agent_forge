@@ -8,14 +8,38 @@
             <span class="dot dot-1" /><span class="dot dot-2" />
             <span class="dot dot-3" /><span class="dot dot-4" />
           </div>
-          <h2 v-if="chat.currentAgent">你好,我是 {{ chat.currentAgent.name }}</h2>
+          <h2 v-if="chat.currentAgent">
+            你好,我是 {{ chat.currentAgent.name }}
+            <button class="cap-info-btn" :title="'查看智能体能力'" @click="openCapabilities(chat.currentAgent.id)">
+              <el-icon :size="16"><InfoFilled /></el-icon>
+            </button>
+          </h2>
           <h2 v-else>欢迎</h2>
-          <p v-if="chat.currentAgent">{{ chat.currentAgent.description || '在下方输入开始对话' }}</p>
+          <template v-if="chat.currentAgent">
+            <p v-if="welcomeIntro" class="welcome-intro">{{ welcomeIntro }}</p>
+            <div v-if="welcomeStarters.length" class="welcome-starters">
+              <button
+                v-for="(q, qi) in welcomeStarters"
+                :key="qi"
+                class="starter-chip"
+                :disabled="sending || !chat.currentAgent"
+                @click="useStarter(q)"
+              >
+                {{ q }}
+              </button>
+            </div>
+            <p v-if="!welcomeIntro && !welcomeStarters.length" class="welcome-intro">在下方输入开始对话</p>
+          </template>
           <p v-else>暂无可用智能体,请联系管理员授权</p>
         </div>
 
         <template v-else>
-          <div v-for="m in chat.messages" :key="m.id || m._tmp" :class="['msg', m.role]">
+          <div
+            v-for="m in chat.messages"
+            v-show="!(m.role === 'user' && m.content_json?.hidden)"
+            :key="m.id || m._tmp"
+            :class="['msg', m.role]"
+          >
             <div v-if="m.role === 'assistant'" :class="['avatar', 'bot', { 'is-thinking': isWaiting(m) }]">
               <span class="dot dot-1" /><span class="dot dot-2" />
               <span class="dot dot-3" /><span class="dot dot-4" />
@@ -32,6 +56,14 @@
                 <span>{{ m._meta.agent_name }}</span>
                 <span class="dot-sep">·</span>
                 <code>{{ m._meta.model_id }}</code>
+                <button
+                  v-if="chat.currentAgent"
+                  class="cap-info-btn cap-info-btn-sm"
+                  :title="'查看智能体能力'"
+                  @click="openCapabilities(chat.currentAgent.id)"
+                >
+                  <el-icon :size="13"><InfoFilled /></el-icon>
+                </button>
               </div>
 
               <!-- thinking block -->
@@ -172,11 +204,16 @@
       </div>
     </section>
     <PreviewPanel v-if="previewFile" :file="previewFile" @close="closePreview" />
+    <AgentCapabilityDrawer
+      v-model="capDrawerVisible"
+      :agent-id="capDrawerAgentId"
+      :agent-name="chat.currentAgent?.name"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
@@ -186,7 +223,9 @@ import WidgetRenderer from '@/components/WidgetRenderer.vue'
 import FileCard from '@/components/FileCard.vue'
 import PackProgressCard from '@/components/PackProgressCard.vue'
 import PreviewPanel from '@/components/PreviewPanel.vue'
+import AgentCapabilityDrawer from '@/components/AgentCapabilityDrawer.vue'
 import MessageDispatcher from '@/agent-ui/engine/MessageDispatcher.vue'
+import { InfoFilled } from '@element-plus/icons-vue'
 import { parseMessageContent } from '@/lib/widget-parser'
 
 const md = new MarkdownIt({ breaks: true, linkify: true })
@@ -197,6 +236,41 @@ const input = ref('')
 const sending = ref(false)
 const scrollRef = ref<HTMLElement | null>(null)
 const previewFile = ref<any | null>(null)
+const capDrawerVisible = ref(false)
+const capDrawerAgentId = ref<number | null>(null)
+function openCapabilities(agentId: number) {
+  capDrawerAgentId.value = agentId
+  capDrawerVisible.value = true
+}
+
+/** Split the current agent's description into a plain intro paragraph and a
+ *  list of starter questions. Lines starting with '- ', '• ', '* ' or a
+ *  numbered prefix like '1.' are treated as starter questions; everything
+ *  else joins the intro. */
+const parsedWelcome = computed<{ intro: string; starters: string[] }>(() => {
+  const desc = chat.currentAgent?.description || ''
+  if (!desc) return { intro: '', starters: [] }
+  const starterRe = /^\s*(?:[-•*]|\d+[.、])\s+(.+)$/
+  const introLines: string[] = []
+  const starters: string[] = []
+  for (const raw of desc.split(/\r?\n/)) {
+    const m = raw.match(starterRe)
+    if (m && m[1].trim()) {
+      starters.push(m[1].trim())
+    } else if (raw.trim()) {
+      introLines.push(raw.trim())
+    }
+  }
+  return { intro: introLines.join(' '), starters: starters.slice(0, 4) }
+})
+const welcomeIntro = computed(() => parsedWelcome.value.intro)
+const welcomeStarters = computed(() => parsedWelcome.value.starters)
+
+function useStarter(q: string) {
+  if (!q || sending.value || !chat.currentAgent) return
+  input.value = q
+  send()
+}
 
 function closePreview() { previewFile.value = null }
 
@@ -292,9 +366,12 @@ function openPreview(f: any) {
   previewFile.value = { ...f, download_url: url }
 }
 
-// Bridge for UI Schema -> Agent. Sends a [UI_ACTION] message that the backend
-// recognises in chat.py and routes directly to the tool, bypassing LLM.
-// We do NOT push a user bubble for it — UI actions are continuations, not utterances.
+// Bridge for UI Schema → Agent. The text carries one of two prefixes:
+//   [UI_ACTION] tool=...  → backend bypasses LLM and calls the tool directly
+//   [UI_MSG] <text>       → backend strips the prefix and runs the LLM normally,
+//                            but the user-message it persists is marked hidden
+//                            so the synthetic bubble doesn't show up in the transcript.
+// Either way, we don't push a user bubble locally.
 async function onAgentCall(text: string) {
   if (!chat.currentAgent || sending.value) return
   if (!chat.currentConvId) await chat.ensureConv()
@@ -552,6 +629,34 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 }
 .welcome h2 { margin: 16px 0 6px; font-weight: 600; letter-spacing: -0.01em; color: var(--m-text); }
 .welcome p { margin: 0; font-size: 14px; }
+.welcome-intro { max-width: 640px; color: var(--m-text-secondary); line-height: 1.6; }
+.welcome-starters {
+  margin-top: 18px;
+  display: flex; flex-direction: column; gap: 8px;
+  align-items: center;
+  width: 100%; max-width: 560px;
+}
+.starter-chip {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  font-size: 13px; line-height: 1.5;
+  padding: 10px 14px;
+  border: 1px solid var(--m-border, #e8eaed);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--m-text, #202124);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s, transform .1s;
+  box-shadow: 0 1px 2px rgba(60,64,67,.04);
+}
+.starter-chip:hover:not(:disabled) {
+  background: #f8f9fa;
+  border-color: #aecbfa;
+  box-shadow: 0 1px 3px rgba(26,115,232,.12);
+}
+.starter-chip:active:not(:disabled) { transform: scale(.99); }
+.starter-chip:disabled { opacity: .55; cursor: not-allowed; }
 .welcome-mark { display:grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 48px; height: 48px; }
 .welcome-mark .dot { border-radius: 50%; width: 100%; height: 100%; }
 .welcome-mark .dot-1 { background:#4285f4 } .welcome-mark .dot-2 { background:#ea4335 }
@@ -674,6 +779,15 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 }
 .msg-meta code { background: var(--m-surface-variant); padding: 1px 6px; border-radius: 4px; font-family: 'Roboto Mono', monospace; }
 .dot-sep { color: var(--m-text-tertiary); }
+
+.cap-info-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer;
+  margin-left: 8px; padding: 2px 4px; border-radius: 4px;
+  color: var(--m-text-secondary); transition: background .15s, color .15s;
+}
+.cap-info-btn:hover { background: var(--m-surface-variant); color: var(--m-primary); }
+.cap-info-btn-sm { margin-left: 4px; padding: 1px 3px; }
 
 /* thinking card */
 .thinking-card {

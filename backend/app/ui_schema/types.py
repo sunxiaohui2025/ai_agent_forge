@@ -70,12 +70,13 @@ def strip_ui_for_model(tool_result: dict) -> dict:
 
     Removes the `__ui__` blob (which may be huge) and replaces it with a tiny
     summary so the model knows a UI was rendered without re-reading the data.
+    Also strips runtime-only flags like `__halt__`.
     """
     if not isinstance(tool_result, dict):
         return tool_result
     if "__ui__" not in tool_result and tool_result.get("message_type") != "ui":
         return tool_result
-    cleaned = {k: v for k, v in tool_result.items() if k != "__ui__"}
+    cleaned = {k: v for k, v in tool_result.items() if k not in ("__ui__", "__halt__")}
     cleaned.setdefault("__ui_rendered__", True)
     return cleaned
 
@@ -92,5 +93,9 @@ def whitelist_tool_names(skills: Iterable, mcp_tool_routes: dict) -> set[str]:
             names.add(s.code)
     names.update(mcp_tool_routes.keys())
     # Built-in helpers also allowed
-    names.update({"save_output_file", "_read_skill_file", "run_skill_script", "load_widget_guidelines"})
+    names.update({
+        "save_output_file", "_read_skill_file", "run_skill_script",
+        "load_widget_guidelines",
+        "ask_user_pick", "ask_user_form",
+    })
     return names

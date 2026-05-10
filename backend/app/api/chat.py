@@ -111,15 +111,25 @@ async def agent_capabilities(
     )).scalars().all()) if pack_ids else []
 
     return {
+        "agent": {
+            "id": a.id, "code": a.code, "name": a.name,
+            "description": a.description,
+            "icon": a.icon,
+        },
         "model": _model_brief(model),
         "fallback_model": _model_brief(fb),
         "skills": [
             {"id": s.id, "code": s.code, "name": s.name, "type": s.type,
-             "description": s.description, "enabled": s.enabled}
+             "description": s.description,
+             "user_summary": s.user_summary,
+             "enabled": s.enabled}
             for s in skills
         ],
         "mcps": [
-            {"id": m.id, "name": m.name, "transport": m.transport, "enabled": m.enabled}
+            {"id": m.id, "name": m.name, "transport": m.transport,
+             "user_summary": m.user_summary,
+             "tool_summaries": (m.tool_summaries_json or {}).get("items") or [],
+             "enabled": m.enabled}
             for m in mcps
         ],
         "packs": [
@@ -313,10 +323,18 @@ async def send_message(
     # ---- Security: input filter ----
     from ..core.security_rules import scan_user_input
     from ..db.models import AuditLog
-    # [UI_ACTION] route: structured user action from a rendered UI Schema.
-    # Bypass scan_user_input — the payload is JSON we authored, not free text.
+    # [UI_ACTION] route: structured user action from a rendered UI Schema → tool call.
+    # [UI_MSG]    route: synthetic user message from a UI Schema button → normal LLM turn,
+    #                    but hidden from the chat transcript (no user bubble shown).
+    # Both bypass scan_user_input because we authored them.
     is_ui_action = payload.content.startswith("[UI_ACTION]")
-    hits = [] if is_ui_action else scan_user_input(payload.content)
+    is_ui_msg = payload.content.startswith("[UI_MSG]")
+    # The clean text the LLM should actually see for [UI_MSG]
+    if is_ui_msg:
+        clean_text = payload.content[len("[UI_MSG]"):].lstrip()
+    else:
+        clean_text = payload.content
+    hits = [] if (is_ui_action or is_ui_msg) else scan_user_input(payload.content)
     if hits:
         # Persist a high-signal audit record so admins can review attempted attacks
         db.add(AuditLog(
@@ -346,8 +364,14 @@ async def send_message(
     # (the current turn is passed separately as user_text into the runner)
     ctx = await _load_agent_context(db, c.agent_id, conversation_id=cid)
 
-    user_msg = Message(conversation_id=cid, role="user",
-                       content_json={"text": payload.content, "file_ids": payload.file_ids})
+    user_msg = Message(
+        conversation_id=cid, role="user",
+        content_json={
+            "text": clean_text,
+            "file_ids": payload.file_ids,
+            **({"hidden": True} if is_ui_msg else {}),
+        },
+    )
     db.add(user_msg)
     await db.commit()
 
@@ -431,7 +455,7 @@ async def send_message(
                                     tokens_out = ev.data.get("tokens_out", 0)
                                     latency = ev.data.get("latency_ms", 0)
                 else:
-                    async for ev in runner.stream(payload.content, files):
+                    async for ev in runner.stream(clean_text, files):
                         payload_json = {"type": ev.type, "data": ev.data}
                         yield f"data: {json.dumps(payload_json, ensure_ascii=False)}\n\n"
                         # cooperative yield so each chunk is flushed to client immediately

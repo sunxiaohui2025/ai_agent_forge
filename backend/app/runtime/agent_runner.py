@@ -86,6 +86,44 @@ def _wants_widget(text: str) -> bool:
     return any(k.lower() in low for k in _VIZ_KEYWORDS_GENERAL + _VIZ_KEYWORDS_HTML)
 
 
+# Short hint describing the two built-in user-interaction tools so the model
+# knows they exist. The tool schemas carry the full description; this block
+# exists so the model reaches for them at the right time.
+_USER_INTERACTION_GUIDANCE = """
+## 需要用户参与决策时（重要 · 强制规则）
+
+`ask_user_pick` 和 `ask_user_form` 是平台**内置的用户交互工具**，**不是 Skill 也不是业务工具**。
+即便用户说"不要使用 Skill / 不要使用工具"，你**仍然必须**调用这两个内置工具来向用户收集信息——
+它们只是把"问问题"换成更友好的卡片/表单 UI，本质上等同于你"开口提问"，不属于 skill 范畴。
+
+### 强制触发规则
+- 需要用户从 ≥2 个候选里挑选 → **必须**调用 `ask_user_pick`；**禁止**让用户回复数字或文字。
+- 需要用户补充 ≥2 个结构化字段（如：场景 / 目标用户 / 覆盖范围）才能继续 → **必须**调用
+  `ask_user_form`；**禁止**用 Markdown 表格、有序列表或文字罗列问题让用户挨个回答。
+- 只问 1 个简单字段时（如"您叫什么名字"），可以用文字问，不必动用工具。
+
+### 调用后的行为
+工具调用本身就是这一轮的输出。调用完**立即停止说话**（不要在 tool_call 之后继续追问文字）。
+等用户在 UI 上提交，你会收到一条经过模板渲染的用户消息（包含字段值），再基于此继续推理。
+
+### 反例（绝对不要这样做）
+> 「在开始编写前，请先告诉我以下几个关键信息：
+> | 问题 | 您的答案 |
+> | --- | --- |
+> | 应用场景 | … |
+> | 目标用户 | … |」
+（出现这种"列若干问题让用户回填"的形态时，**应当改为调用 `ask_user_form`**）
+
+### 正例
+调用 `ask_user_form(title="政务智能体方案 · 基础信息", fields=[
+  {"id":"scenario", "label":"应用场景", "type":"Textarea", "required":true,
+   "placeholder":"如：面向市民的社保咨询服务"},
+  {"id":"target_user", "label":"目标用户", "type":"Input", "required":true},
+  {"id":"scope", "label":"覆盖范围", "type":"Input"},
+  {"id":"pain_point", "label":"核心痛点", "type":"Textarea"},
+])`
+"""
+
 # Effort level → per-provider tuning.
 # Canonical levels: low / medium / high / xhigh / max.
 # For Anthropic (Claude Agent SDK): mapped to extended-thinking token budget.
@@ -272,6 +310,8 @@ class AgentRunner:
             for s in self.ctx.skills:
                 tag = "组合" if s.type == "composite" else "原子"
                 parts.append(f"- **{s.code}** ({tag}): {s.description or '(无描述)'}")
+        # Built-in user-interaction guidance — always available, low overhead.
+        parts.append(_USER_INTERACTION_GUIDANCE)
         return "\n".join(parts).strip()
 
     def _build_openai_tools(self, user_text: str | None = None) -> list[dict[str, Any]]:
@@ -426,6 +466,112 @@ class AgentRunner:
             })
         # Generative-UI widget guidelines loader (always available)
         tools.append(WIDGET_TOOL_DEFINITION)
+
+        # Built-in user-interaction tools (always available).
+        # These are how the model can pause and ask the user something with
+        # a clickable UI surface; the click submits a synthetic user message
+        # the model picks up on the next turn.
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "ask_user_pick",
+                "description": (
+                    "向用户弹一个可点选的选项卡片列表，让用户从若干候选里挑一个（或多个）。"
+                    "用户点击后，前端会把用户的选择以普通用户消息的形式提交给你（消息已模板化），"
+                    "你在下一轮看到结果后再决定如何继续。"
+                    "适用于『你找到了多个候选，需要用户挑一个再继续推理』的场景。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "卡片列表的标题，例如 '请选择城市'"},
+                        "question": {"type": "string", "description": "可选，给用户的提示文案"},
+                        "options": {
+                            "type": "array",
+                            "description": "候选项数组",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": {"type": "string", "description": "显示在卡片上的主标题"},
+                                    "value": {"description": "选项的内部值（任意类型，原样回传给你）"},
+                                    "description": {"type": "string", "description": "卡片副标题/简短说明"},
+                                },
+                                "required": ["label"],
+                            },
+                        },
+                        "multi_select": {
+                            "type": "boolean",
+                            "description": "是否允许多选；默认 false",
+                        },
+                        "follow_up_template": {
+                            "type": "string",
+                            "description": (
+                                "用户点击后回传给你的消息模板，支持 {{label}} {{value}} 占位符。"
+                                "缺省为 '我选「{{label}}」'。"
+                            ),
+                        },
+                    },
+                    "required": ["title", "options"],
+                },
+            },
+        })
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "ask_user_form",
+                "description": (
+                    "向用户弹出一个表单，让用户填若干字段后提交。"
+                    "用户提交后，前端会把表单内容以普通用户消息的形式提交给你（消息已模板化），"
+                    "你在下一轮看到结果后再决定如何继续。"
+                    "适用于『需要用户先补充几条结构化信息才能继续』的场景。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "表单标题"},
+                        "fields": {
+                            "type": "array",
+                            "description": "字段定义",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string", "description": "字段名（提交时用作 key）"},
+                                    "label": {"type": "string", "description": "字段显示名"},
+                                    "type": {
+                                        "type": "string",
+                                        "description": "Input / Textarea / InputNumber / Select / DatePicker / Radio / Checkbox",
+                                    },
+                                    "required": {"type": "boolean"},
+                                    "placeholder": {"type": "string"},
+                                    "default": {"description": "缺省值"},
+                                    "options": {
+                                        "type": "array",
+                                        "description": "Select / Radio / Checkbox 的选项 [{label,value}]",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "label": {"type": "string"},
+                                                "value": {},
+                                            },
+                                        },
+                                    },
+                                },
+                                "required": ["id", "label", "type"],
+                            },
+                        },
+                        "submit_label": {"type": "string", "description": "提交按钮文案，默认 '提交'"},
+                        "follow_up_template": {
+                            "type": "string",
+                            "description": (
+                                "表单提交后回传给你的消息模板。支持 {{字段名}} 占位符；"
+                                "若不提供，前端会把整个表单 JSON 序列化后回传。"
+                            ),
+                        },
+                    },
+                    "required": ["title", "fields"],
+                },
+            },
+        })
         return tools
 
     async def _pack_runner_factory(self, user_id: int | None = None, agent_id: int | None = None,
@@ -451,6 +597,13 @@ class AgentRunner:
                 mime=args.get("mime") or None,
                 encoding=args.get("encoding") or "utf-8",
             )
+
+        # Built-in user-interaction tools — produce a UI Schema with submit_as='message'
+        # so a user click sends a synthetic user message back to the LLM next turn.
+        if skill_code == "ask_user_pick":
+            return self._build_ask_user_pick(args)
+        if skill_code == "ask_user_form":
+            return self._build_ask_user_form(args)
 
         # Run a bundled Skill python script
         if skill_code == "run_skill_script":
@@ -580,6 +733,129 @@ class AgentRunner:
             "hint": ("阅读 instructions 中的 SKILL.md 指令并按要求继续执行任务。"
                      "如需读取其它文件,调用 _read_skill_file(skill, path)。"),
         }
+
+    # ---------- Built-in user-interaction tools ----------
+    def _build_ask_user_pick(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Build a CardList UI Schema for `ask_user_pick`.
+
+        Each option becomes a card; clicking submits a synthetic user message
+        rendered from `follow_up_template` (default: 我选「{{label}}」).
+        """
+        title = str(args.get("title") or "请选择")
+        question = args.get("question")
+        options = args.get("options") or []
+        if not isinstance(options, list) or not options:
+            return {"error": "ask_user_pick: options 不能为空"}
+        multi = bool(args.get("multi_select"))
+        # NOTE: multi-select via card click is awkward (no native checkbox state in
+        # CardList). For the MVP we honor multi_select by switching to a form with
+        # a checkbox group instead. Single-select is the common case.
+        if multi:
+            return self._build_ask_user_form({
+                "title": title,
+                "fields": [{
+                    "id": "selected",
+                    "label": question or title,
+                    "type": "Checkbox",
+                    "required": True,
+                    "options": [{"label": str(o.get("label", "")), "value": o.get("value", o.get("label"))}
+                                for o in options if isinstance(o, dict)],
+                }],
+                "follow_up_template": str(args.get("follow_up_template") or "我选了：{{selected}}"),
+                "submit_label": "提交",
+            })
+
+        items = []
+        for i, o in enumerate(options):
+            if not isinstance(o, dict):
+                continue
+            items.append({
+                "id": str(o.get("value", i)),
+                "title": str(o.get("label", "")),
+                "subtitle": str(o.get("description") or ""),
+                "_label": str(o.get("label", "")),
+                "_value": o.get("value", o.get("label", "")),
+            })
+
+        tpl = str(args.get("follow_up_template") or "用户通过 ask_user_pick 选择了「{{label}}」（value={{value}}），请基于此继续。")
+        ui = {
+            "message_type": "ui",
+            "component_type": "CardList",
+            "title": title,
+            "data_model": {"items": items, "total": len(items)},
+            "actions": [{
+                "name": "pick",
+                "label": "选择",
+                "trigger": "card_click",
+                "agent_call": True,
+                "submit_as": "message",
+                "params_from": "/items/{index}",
+                "params_map": {"label": "/_label", "value": "/_value"},
+                "message_template": tpl,
+            }],
+        }
+        # __halt__ tells the multi-turn loop to stop here and wait for the user's
+        # next message (the form / pick submission). Without this the LLM sees a
+        # tool_result and merrily continues the conversation while the UI is still
+        # waiting for the user to click — which looks like the model "self-answered".
+        return {"__ui__": ui, "__halt__": True, "ok": True,
+                "note": "已展示选项卡片，等待用户选择后再继续；本轮到此为止。"}
+
+    def _build_ask_user_form(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Build a DynamicForm UI Schema for `ask_user_form`."""
+        title = str(args.get("title") or "请填写")
+        fields = args.get("fields") or []
+        if not isinstance(fields, list) or not fields:
+            return {"error": "ask_user_form: fields 不能为空"}
+        components = []
+        defaults: dict[str, Any] = {}
+        for f in fields:
+            if not isinstance(f, dict) or not f.get("id"):
+                continue
+            fid = str(f["id"])
+            ftype = str(f.get("type") or "Input")
+            props: dict[str, Any] = {
+                "label": f.get("label") or fid,
+                "required": bool(f.get("required")),
+            }
+            if f.get("placeholder"):
+                props["placeholder"] = f.get("placeholder")
+            if f.get("options"):
+                props["options"] = f.get("options")
+            components.append({"id": fid, "type": ftype, "props": props})
+            if "default" in f:
+                defaults[fid] = f["default"]
+
+        # Default template: render every field as `key=value` joined by 空格.
+        # If user provided one, use it directly.
+        tpl = args.get("follow_up_template")
+        if not tpl:
+            placeholders = "\n".join(f"- {c['id']}={{{{{c['id']}}}}}" for c in components)
+            tpl = (
+                "用户已通过 ask_user_form 表单提交了以下内容，请基于这些字段继续完成上一步说要做的任务（不要再次让用户填表单）：\n"
+                + placeholders
+            )
+        submit_label = str(args.get("submit_label") or "提交")
+
+        ui = {
+            "message_type": "ui",
+            "component_type": "DynamicForm",
+            "title": title,
+            "data_model": defaults,
+            "components": components,
+            "actions": [{
+                "name": "submit",
+                "label": submit_label,
+                "trigger": "form_submit",
+                "agent_call": True,
+                "submit_as": "message",
+                "params_from": "/",
+                "message_template": tpl,
+                "style": "primary",
+            }],
+        }
+        return {"__ui__": ui, "__halt__": True, "ok": True,
+                "note": "已展示表单，等待用户提交后再继续；本轮到此为止。"}
 
     async def _save_output_file(
         self, filename: str, content: str, mime: str | None = None,
@@ -987,18 +1263,62 @@ class AgentRunner:
                 "provider": self.ctx.model.provider,
             })
         provider = (self.ctx.model.provider if self.ctx.model else "anthropic").lower()
+        primary_failed: tuple[type, str] | None = None
+        primary_streamed_text = False
         try:
-            inner = (self._stream_via_sdk(user_text, files or []) if provider == "anthropic"
-                     else self._stream_via_openai(user_text, files or []))
-            async for ev in inner:
-                # Accumulate text for the fallback extractor (runs in finally)
-                if ev.type == "text":
-                    self._fallback_text_buf.append(ev.data.get("text", "") if isinstance(ev.data, dict) else "")
-                yield ev
-        except ImportError as e:
-            yield StreamEvent("error", {"message": f"SDK 未安装: {e}"})
-        except Exception as e:  # noqa: BLE001
-            yield StreamEvent("error", {"message": f"agent 执行错误: {e}"})
+            try:
+                inner = (self._stream_via_sdk(user_text, files or []) if provider == "anthropic"
+                         else self._stream_via_openai(user_text, files or []))
+                async for ev in inner:
+                    # Accumulate text for the fallback extractor (runs in finally)
+                    if ev.type == "text":
+                        txt = ev.data.get("text", "") if isinstance(ev.data, dict) else ""
+                        self._fallback_text_buf.append(txt)
+                        if txt:
+                            primary_streamed_text = True
+                    yield ev
+            except ImportError as e:
+                yield StreamEvent("error", {"message": f"SDK 未安装: {e}"})
+            except Exception as e:  # noqa: BLE001
+                primary_failed = (type(e), str(e))
+
+            # Fallback: only if the primary call errored AND it hadn't yet streamed
+            # any visible text/tool output to the user. Mid-stream model swaps look
+            # broken (the user already saw partial output from model A), so we skip
+            # the swap in that case and surface the original error.
+            if primary_failed is not None:
+                fb = self.ctx.fallback_model
+                if fb and not primary_streamed_text:
+                    yield StreamEvent("text", {
+                        "text": f"\n\n> ⚠️ 主模型调用失败（{primary_failed[1][:120]}），已自动切换到降级模型 **{fb.code}** 重试…\n\n",
+                    })
+                    # Swap model + reset per-call counters so usage attribution makes
+                    # sense for the retry. Provider may differ → re-route SDK/OpenAI path.
+                    self.ctx.model = fb
+                    self._tokens_in = 0
+                    self._tokens_out = 0
+                    yield StreamEvent("meta", {
+                        "agent_name": self.ctx.agent.name,
+                        "agent_code": self.ctx.agent.code,
+                        "model_code": fb.code,
+                        "model_id": fb.model_id,
+                        "provider": fb.provider,
+                        "fallback": True,
+                    })
+                    fb_provider = (fb.provider or "").lower()
+                    try:
+                        fb_inner = (self._stream_via_sdk(user_text, files or []) if fb_provider == "anthropic"
+                                    else self._stream_via_openai(user_text, files or []))
+                        async for ev in fb_inner:
+                            if ev.type == "text":
+                                self._fallback_text_buf.append(ev.data.get("text", "") if isinstance(ev.data, dict) else "")
+                            yield ev
+                    except Exception as e2:  # noqa: BLE001
+                        yield StreamEvent("error", {
+                            "message": f"降级模型也失败: {e2}（原始错误: {primary_failed[1][:120]}）",
+                        })
+                else:
+                    yield StreamEvent("error", {"message": f"agent 执行错误: {primary_failed[1]}"})
         finally:
             # If the model dumped a large code block to text instead of calling
             # save_output_file, extract & persist it as a fallback.
@@ -1091,12 +1411,61 @@ class AgentRunner:
 
         tools = self._build_openai_tools(user_text)
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
-        # Replay prior turns so the model has conversation context
+        # Replay prior turns so the model has conversation context.
+        # Important: for assistant turns that called tools (esp. interactive ones
+        # like ask_user_form / ask_user_pick), we MUST replay the tool_calls
+        # and their tool responses so the model understands why the next user
+        # message is a form submission / pick selection and not a fresh query.
         for h in (self.ctx.history or []):
-            text = (h.content_json or {}).get("text") if isinstance(h.content_json, dict) else None
-            if not text:
-                continue
-            messages.append({"role": h.role, "content": text})
+            cj = h.content_json if isinstance(h.content_json, dict) else {}
+            text = cj.get("text") or ""
+            if h.role == "user":
+                if text:
+                    messages.append({"role": "user", "content": text})
+            elif h.role == "assistant":
+                trace = []
+                if isinstance(h.tool_calls_json, dict):
+                    trace = h.tool_calls_json.get("trace") or []
+                # Collect tool_use entries on this assistant turn, in order.
+                tool_uses: list[dict[str, Any]] = []
+                tool_results_by_id: dict[str, Any] = {}
+                for t in trace:
+                    if not isinstance(t, dict):
+                        continue
+                    tt = t.get("type"); d = t.get("data") or {}
+                    if tt == "tool_use":
+                        tid = d.get("id") or d.get("name") or f"t_{len(tool_uses)}"
+                        tool_uses.append({
+                            "id": tid, "name": d.get("name") or "",
+                            "arguments": d.get("input") or {},
+                        })
+                    elif tt == "tool_result":
+                        tid = d.get("tool_use_id")
+                        if tid is not None:
+                            tool_results_by_id[str(tid)] = d.get("content")
+                if tool_uses:
+                    messages.append({
+                        "role": "assistant",
+                        "content": text or None,
+                        "tool_calls": [
+                            {
+                                "id": str(tu["id"]),
+                                "type": "function",
+                                "function": {
+                                    "name": tu["name"],
+                                    "arguments": _json.dumps(tu["arguments"] or {}, ensure_ascii=False),
+                                },
+                            }
+                            for tu in tool_uses
+                        ],
+                    })
+                    for tu in tool_uses:
+                        result = tool_results_by_id.get(str(tu["id"]), "")
+                        if not isinstance(result, str):
+                            result = _json.dumps(result, ensure_ascii=False, default=str)
+                        messages.append({"role": "tool", "tool_call_id": str(tu["id"]), "content": result})
+                elif text:
+                    messages.append({"role": "assistant", "content": text})
         messages.append({"role": "user", "content": prompt})
 
         # ---- MCP integration: short-lived connections only ----
@@ -1129,7 +1498,7 @@ class AgentRunner:
                 )
 
         # multi-turn loop: model may call skill / mcp tools, we execute and feed results back
-        MAX_ITER = max(1, int(getattr(self.ctx.agent, "max_turns", 5) or 5))
+        MAX_ITER = max(1, int(getattr(self.ctx.agent, "max_turns", 15) or 15))
         # Effort → reasoning_effort (OpenAI / DeepSeek / Qwen reasoning models honor
         # this; ignored by providers that don't). xhigh/max fall back to "high"
         # for OpenAI compat since only low/medium/high are universally accepted.
@@ -1214,6 +1583,7 @@ class AgentRunner:
                 messages.append(assistant_msg)
 
                 # execute each tool call (route MCP tools to MCP server, others to skill executor)
+                halt_after_tools = False
                 for slot in tool_calls_acc.values():
                     if not (slot.get("id") and slot.get("name")):
                         continue
@@ -1235,10 +1605,18 @@ class AgentRunner:
                     # so it knows a UI was rendered; we don't feed back the whole schema.
                     from ..ui_schema.types import extract_ui_schema, strip_ui_for_model
                     ui_schema = extract_ui_schema(result, tool_name=slot["name"])
+                    # Capture halt intent BEFORE strip (which scrubs runtime-only flags).
+                    halts_loop = bool(isinstance(result, dict) and result.get("__halt__"))
                     if ui_schema:
                         yield StreamEvent("ui", ui_schema)
                         self._saved_ui.append(ui_schema)
                         result = strip_ui_for_model(result)
+                    # `__halt__` tools (ask_user_pick / ask_user_form) must stop the
+                    # loop immediately so the user can actually interact — otherwise
+                    # the model sees the tool_result and cheerfully self-answers
+                    # while the UI is still waiting for a click.
+                    if halts_loop:
+                        halt_after_tools = True
                     result_str = _json.dumps(result, ensure_ascii=False, default=str)
                     yield StreamEvent("tool_result", {"tool_use_id": slot["id"], "content": result_str})
                     if isinstance(result, dict) and isinstance(result.get("file"), dict):
@@ -1251,6 +1629,17 @@ class AgentRunner:
                         "role": "tool", "tool_call_id": slot["id"],
                         "content": result_str,
                     })
+                if halt_after_tools:
+                    # End this turn. The next user action (form submit / pick) will
+                    # come in as a fresh [UI_MSG] and the model picks up the thread
+                    # with full tool_calls + tool_result history replayed.
+                    yield StreamEvent("done", {
+                        "tokens_in": self._tokens_in,
+                        "tokens_out": self._tokens_out,
+                        "latency_ms": int((time.time() - start) * 1000),
+                        "files": list(self._saved_files),
+                    })
+                    return
 
         yield StreamEvent("error", {"message": f"工具调用循环超过 {MAX_ITER} 轮,已强制中断"})
 
@@ -1484,7 +1873,7 @@ class AgentRunner:
             # in allowed_tools is denied entirely, regardless of permission_mode.
             "permission_mode": "bypassPermissions",
             "allowed_tools": allowed_tools,
-            "max_turns": max(1, int(getattr(self.ctx.agent, "max_turns", 5) or 5)),
+            "max_turns": max(1, int(getattr(self.ctx.agent, "max_turns", 15) or 15)),
             # Belt-and-suspenders: explicitly disallow the dangerous trio in case some
             # SDK version honors disallowed_tools as an extra deny list.
             "disallowed_tools": ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch"],

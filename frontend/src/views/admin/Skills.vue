@@ -9,29 +9,30 @@
     </div>
     <el-table :data="rows" stripe>
       <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="code" label="编码" />
-      <el-table-column prop="name" label="名称" />
-      <el-table-column prop="type" label="类型" width="100">
+      <el-table-column prop="code" label="编码" min-width="140" show-overflow-tooltip />
+      <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip />
+      <el-table-column prop="type" label="类型" width="90">
         <template #default="{ row }">
-          <el-tag :type="row.type === 'composite' ? 'warning' : 'primary'">{{ row.type }}</el-tag>
+          <el-tag :type="row.type === 'composite' ? 'warning' : 'primary'" size="small">{{ row.type }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="description" label="描述" show-overflow-tooltip />
-      <el-table-column label="来源" width="160">
+      <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+      <el-table-column label="来源" width="90">
         <template #default="{ row }">
           <el-tag v-if="row.source_json?.path" type="info" size="small">已上传</el-tag>
           <el-tag v-else-if="row.source_json?.callable" type="info" size="small">callable</el-tag>
           <el-tag v-else-if="row.source_json?.yaml" type="info" size="small">YAML</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="version" label="版本" width="80" />
-      <el-table-column prop="enabled" label="启用" width="80">
-        <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '是' : '否' }}</el-tag></template>
+      <el-table-column prop="version" label="版本" width="70" align="center" />
+      <el-table-column prop="enabled" label="启用" width="70" align="center">
+        <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '是' : '否' }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="操作" width="240">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
           <el-button v-if="row.source_json?.path" size="small" text @click="openDetail(row)"><el-icon><View /></el-icon>详情</el-button>
           <el-button size="small" text @click="openEdit(row)">编辑</el-button>
+          <el-button size="small" text @click="openSummary(row)">使用说明</el-button>
           <el-button size="small" text type="danger" @click="onDelete(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -201,6 +202,25 @@
         <el-button type="primary" :loading="uploading" @click="onUploadSubmit">上传</el-button>
       </template>
     </el-dialog>
+
+    <!-- Usage summary editor: view + edit the AI-generated user_summary. -->
+    <el-dialog v-model="summaryVisible" :title="`使用说明 · ${summaryRow?.name || ''}`" width="640px">
+      <div v-if="summaryRow" class="summary-meta muted">
+        <span>{{ summaryRow.code }}</span>
+        <span v-if="summaryRow.user_summary_updated_at">· 更新于 {{ formatTime(summaryRow.user_summary_updated_at) }}</span>
+      </div>
+      <el-input
+        v-model="summaryText"
+        type="textarea"
+        :rows="10"
+        placeholder="说明这个 Skill 是做什么的、什么时候使用、给出 1-2 个调用示例。留空则恢复 AI 自动生成的说明。"
+      />
+      <template #footer>
+        <el-button @click="summaryVisible = false">取消</el-button>
+        <el-button @click="onResetSummary" :disabled="summarySaving">重置为自动生成</el-button>
+        <el-button type="primary" :loading="summarySaving" @click="onSaveSummary">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 <script setup lang="ts">
@@ -281,6 +301,71 @@ async function onSubmit() {
 }
 async function onDelete(row: any) {
   try { await ElMessageBox.confirm(`删除 ${row.code}?`, '确认', { type: 'warning' }); await api.deleteSkill(row.id); await load() } catch {}
+}
+
+// ---------- usage summary editor ----------
+const summaryVisible = ref(false)
+const summaryRow = ref<any>(null)
+const summaryText = ref('')
+const summarySaving = ref(false)
+
+function openSummary(row: any) {
+  summaryRow.value = row
+  summaryText.value = row.user_summary || ''
+  summaryVisible.value = true
+}
+function formatTime(iso: string) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('zh-CN', { hour12: false })
+}
+async function onSaveSummary() {
+  if (!summaryRow.value) return
+  summarySaving.value = true
+  try {
+    const r = summaryRow.value
+    await api.updateSkill(r.id, {
+      code: r.code,
+      name: r.name,
+      description: r.description || '',
+      type: r.type,
+      source_json: r.source_json || {},
+      enabled: r.enabled,
+      user_summary: (summaryText.value || '').trim(),
+    })
+    ElMessage.success('已保存')
+    summaryVisible.value = false
+    await load()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '保存失败')
+  } finally {
+    summarySaving.value = false
+  }
+}
+async function onResetSummary() {
+  if (!summaryRow.value) return
+  try {
+    await ElMessageBox.confirm('重置后将清空当前说明，并触发 AI 重新生成。继续？', '确认', { type: 'warning' })
+  } catch { return }
+  summarySaving.value = true
+  try {
+    const r = summaryRow.value
+    // empty user_summary signals "let backend re-summarize"
+    await api.updateSkill(r.id, {
+      code: r.code, name: r.name, description: r.description || '',
+      type: r.type, source_json: r.source_json || {}, enabled: r.enabled,
+      user_summary: null,
+    })
+    await api.resummarizeSkill(r.id)
+    ElMessage.success('已重置，稍后刷新列表查看')
+    summaryVisible.value = false
+    setTimeout(() => { load() }, 4000)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '重置失败')
+  } finally {
+    summarySaving.value = false
+  }
 }
 
 // ---------- detail drawer ----------
@@ -425,6 +510,20 @@ async function onUploadSubmit() {
 </script>
 
 <style scoped>
+.summary-meta {
+  font-size: 12px; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.summary-cell {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--m-text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.muted { color: var(--m-text-tertiary); font-size: 12px; }
 .detail-wrap { display: flex; height: calc(100vh - 80px); }
 .tree-pane {
   width: 280px; flex-shrink: 0;

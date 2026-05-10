@@ -27,8 +27,14 @@ async def _auto_migrate() -> None:
             # users.email (needed for task email notifications)
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(256)",
             # agents: max_turns / effort (Claude SDK tuning — added in an earlier change)
-            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS max_turns INTEGER NOT NULL DEFAULT 5",
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS max_turns INTEGER NOT NULL DEFAULT 15",
             "ALTER TABLE agents ADD COLUMN IF NOT EXISTS effort VARCHAR(16) NOT NULL DEFAULT 'medium'",
+            # capability summary (Skill / MCP) — auto-generated, user-friendly Chinese description
+            "ALTER TABLE skills ADD COLUMN IF NOT EXISTS user_summary TEXT",
+            "ALTER TABLE skills ADD COLUMN IF NOT EXISTS user_summary_updated_at TIMESTAMP WITH TIME ZONE",
+            "ALTER TABLE mcp_connectors ADD COLUMN IF NOT EXISTS user_summary TEXT",
+            "ALTER TABLE mcp_connectors ADD COLUMN IF NOT EXISTS tool_summaries_json JSON",
+            "ALTER TABLE mcp_connectors ADD COLUMN IF NOT EXISTS user_summary_updated_at TIMESTAMP WITH TIME ZONE",
         ]:
             try:
                 await conn.exec_driver_sql(stmt)
