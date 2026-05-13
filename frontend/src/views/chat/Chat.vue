@@ -86,21 +86,24 @@
                     :input="s.input"
                     :output="s.output"
                   />
-                  <div v-else :class="['step-card', s.status]">
-                    <div class="step-head">
+                  <details v-else :class="['step-card', s.status]" :open="false">
+                    <summary class="step-head">
                       <el-icon v-if="s.status === 'running'" class="is-loading"><Loading /></el-icon>
                       <el-icon v-else-if="s.status === 'done'" style="color:var(--m-success)"><CircleCheckFilled /></el-icon>
                       <el-icon v-else><Tools /></el-icon>
                       <span class="step-kind">{{ s.kind }}</span>
                       <code class="step-name">{{ s.name }}</code>
-                      <span v-if="s.duration_ms" class="muted" style="font-size:11px">{{ s.duration_ms }}ms</span>
-                    </div>
-                    <details v-if="s.input || s.output" class="step-detail">
-                      <summary class="muted">查看 输入/输出</summary>
+                      <span v-if="s.duration_ms" class="muted step-dur">{{ s.duration_ms }}ms</span>
+                      <span v-if="s.input || s.output" class="step-io-toggle">
+                        <span class="step-io-label">输入/输出</span>
+                        <svg class="step-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>
+                      </span>
+                    </summary>
+                    <div v-if="s.input || s.output" class="step-body">
                       <div v-if="s.input" class="step-block"><div class="step-label">Input</div><pre>{{ formatStepData(s.input) }}</pre></div>
                       <div v-if="s.output" class="step-block"><div class="step-label">Output</div><pre>{{ formatStepData(s.output) }}</pre></div>
-                    </details>
-                  </div>
+                    </div>
+                  </details>
                 </template>
               </div>
 
@@ -1012,7 +1015,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   border: 1px solid var(--m-border);
   border-radius: var(--m-radius);
   background: var(--m-surface);
-  padding: 10px 12px;
+  padding: 0;
   font-size: 13px;
   transition: background .2s, border-color .2s;
 }
@@ -1021,18 +1024,44 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   border-color: var(--m-primary);
 }
 .step-card.done { border-color: var(--m-border); }
-.step-head { display: flex; align-items: center; gap: 8px; }
+.step-head {
+  display: flex; align-items: center; gap: 8px; justify-content: space-between;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.step-head::-webkit-details-marker { display: none; }
+.step-head:hover { background: color-mix(in srgb, var(--m-primary) 6%, transparent); }
 .step-kind {
   text-transform: uppercase; font-size: 10px; font-weight: 700;
   letter-spacing: .06em; color: var(--m-text-secondary);
   background: var(--m-surface-variant); padding: 2px 8px; border-radius: 4px;
+  flex-shrink: 0;
 }
 .step-card.running .step-kind { background: var(--m-primary); color: #fff; }
-.step-name { font-family: 'Roboto Mono', monospace; font-size: 12px; color: var(--m-text); }
+.step-name { font-family: 'Roboto Mono', monospace; font-size: 12px; color: var(--m-text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-dur { font-size: 11px; flex-shrink: 0; }
 
-.step-detail { margin-top: 8px; }
-.step-detail summary { cursor: pointer; font-size: 12px; padding: 2px 0; }
-.step-block { margin-top: 6px; }
+.step-io-toggle {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--m-primary); font-size: 11px; font-weight: 500;
+  flex-shrink: 0; white-space: nowrap;
+}
+.step-io-label { cursor: pointer; }
+.step-chevron {
+  color: var(--m-text-secondary);
+  transition: transform .2s ease;
+}
+.step-card[open] .step-chevron { transform: rotate(180deg); color: var(--m-primary); }
+
+.step-body {
+  padding: 0 12px 10px 12px;
+  border-top: 1px solid var(--m-border);
+  background: color-mix(in srgb, var(--m-bg-soft) 50%, var(--m-surface));
+}
+.step-block { margin-top: 8px; }
+.step-block:first-child { margin-top: 0; }
 .step-label { font-size: 11px; font-weight: 600; color: var(--m-text-secondary); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
 .step-block pre {
   background: #f8f9fa; padding: 8px 10px; border-radius: 6px;

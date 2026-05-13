@@ -26,7 +26,7 @@
           <span class="schedule-tag" :data-type="row.schedule_type">{{ scheduleLabel(row) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="上次执行" width="150">
+      <el-table-column label="上次执行" width="200">
         <template #default="{ row }">
           <div v-if="row.last_run_at" class="last-run">
             <span :class="['status-dot', row.last_run_status]"></span>

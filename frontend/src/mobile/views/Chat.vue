@@ -57,13 +57,31 @@
             </details>
 
             <div v-if="m._steps?.length || m.tool_calls_json?.trace?.length" class="step-list">
-              <div v-for="(s, i) in (m._steps || normalizeTrace(m.tool_calls_json?.trace))" :key="i" :class="['step-card', s.status]">
-                <div class="step-head">
+              <details
+                v-for="(s, i) in (m._steps || normalizeTrace(m.tool_calls_json?.trace))"
+                :key="i"
+                :class="['step-card', s.status]"
+              >
+                <summary class="step-head">
                   <span class="step-kind">{{ s.kind }}</span>
                   <span class="step-name">{{ s.name }}</span>
                   <span v-if="s.duration_ms" class="step-dur">{{ s.duration_ms }}ms</span>
+                  <span v-if="s.input || s.output" class="step-io-toggle">
+                    <span class="step-io-label">输入/输出</span>
+                    <svg class="step-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>
+                  </span>
+                </summary>
+                <div v-if="s.input || s.output" class="step-body">
+                  <div v-if="s.input" class="step-block">
+                    <div class="step-label">Input</div>
+                    <pre>{{ formatJson(s.input) }}</pre>
+                  </div>
+                  <div v-if="s.output" class="step-block">
+                    <div class="step-label">Output</div>
+                    <pre>{{ formatJson(s.output) }}</pre>
+                  </div>
                 </div>
-              </div>
+              </details>
             </div>
 
             <!-- File cards (assistant-emitted files) -->
@@ -452,6 +470,15 @@ function formatSize(n: number) {
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB'
   return (n / 1024 / 1024).toFixed(1) + ' MB'
 }
+
+function formatJson(v: any) {
+  if (v == null) return ''
+  if (typeof v === 'string') {
+    try { return JSON.stringify(JSON.parse(v), null, 2) } catch { return v }
+  }
+  return JSON.stringify(v, null, 2)
+}
+
 
 function normalizeTrace(trace: any[] | undefined) {
   if (!Array.isArray(trace) || !trace.length) return []
@@ -880,22 +907,55 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   border: none;
   border-radius: var(--m-radius);
   background: var(--m-bg-soft);
-  padding: 8px 10px;
+  padding: 0;
   font-size: 12px;
 }
 .step-card.running { background: var(--m-primary-soft); }
-.step-head { display: flex; align-items: center; gap: 6px; }
+.step-head {
+  display: flex; align-items: center; gap: 6px; justify-content: space-between;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.step-head::-webkit-details-marker { display: none; }
 .step-kind {
   text-transform: uppercase; font-size: 10px; font-weight: 700;
   background: var(--m-surface); padding: 1px 6px; border-radius: 4px;
   color: var(--m-text-secondary);
+  flex-shrink: 0;
 }
 .step-card.running .step-kind { background: var(--m-primary); color: #fff; }
 .step-name {
   font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--m-text);
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.step-dur { font-size: 10.5px; color: var(--m-text-tertiary); }
+.step-dur { font-size: 10.5px; color: var(--m-text-tertiary); flex-shrink: 0; }
+
+.step-io-toggle {
+  display: inline-flex; align-items: center; gap: 3px;
+  color: var(--m-primary); font-size: 10px; font-weight: 500;
+  flex-shrink: 0; white-space: nowrap;
+}
+.step-chevron {
+  color: var(--m-text-secondary);
+  transition: transform .2s ease;
+}
+.step-card[open] .step-chevron { transform: rotate(180deg); color: var(--m-primary); }
+
+.step-body {
+  padding: 0 10px 8px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--m-border) 50%, transparent);
+  background: color-mix(in srgb, var(--m-bg-soft) 70%, var(--m-surface));
+}
+.step-block { margin-top: 6px; }
+.step-block:first-child { margin-top: 0; }
+.step-label { font-size: 10px; font-weight: 600; color: var(--m-text-secondary); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+.step-block pre {
+  margin: 0; padding: 6px 8px; background: var(--m-bg-soft);
+  border-radius: 4px; font-size: 11px; font-family: ui-monospace, Menlo, monospace;
+  overflow: auto; max-height: 160px; white-space: pre-wrap; word-break: break-word;
+}
 
 .files-block { display: flex; flex-direction: column; gap: 6px; }
 .file-card {
