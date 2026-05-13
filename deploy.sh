@@ -19,6 +19,20 @@ warn()  { echo -e "${YELLOW}[ warn ]${NC} $*"; }
 error() { echo -e "${RED}[error ]${NC} $*"; exit 1; }
 step()  { echo -e "\n${BLUE}══ $* ══${NC}"; }
 
+# ── 错误时自动打印日志 ────────────────────────────────────────────────────────
+on_error() {
+  local line=$1
+  echo -e "\n${RED}══ 部署失败（脚本第 ${line} 行）══${NC}"
+  if [[ -n "${COMPOSE:-}" ]]; then
+    echo -e "${YELLOW}── 容器状态 ──${NC}"
+    $COMPOSE ps 2>/dev/null || true
+    echo -e "\n${YELLOW}── 最近日志（各服务后 60 行）──${NC}"
+    $COMPOSE logs --tail=60 --no-color 2>/dev/null || true
+  fi
+  echo -e "\n${YELLOW}提示: 修复后可运行 ./deploy.sh --logs 查看完整日志${NC}"
+}
+trap 'on_error $LINENO' ERR
+
 # ── 参数解析 ──────────────────────────────────────────────────────────────────
 MODE="deploy"
 for arg in "$@"; do
@@ -118,6 +132,12 @@ fi
 
 info ".env 检查完成"
 
+# .env 变量导入 shell（用于后续 pg_isready 等命令读取 DB_USER/DB_NAME）
+set -a
+# shellcheck source=.env
+source .env
+set +a
+
 # ── 创建 storage 子目录 ────────────────────────────────────────────────────────
 step "准备存储目录"
 
@@ -144,6 +164,11 @@ step "启动服务"
 
 $COMPOSE up -d
 
+# 给容器 5s 初始化，再确认是否都在 running
+sleep 5
+step "容器启动状态"
+$COMPOSE ps
+
 # ── 等待数据库就绪 ────────────────────────────────────────────────────────────
 step "等待数据库就绪"
 
@@ -158,7 +183,11 @@ for i in $(seq 1 30); do
 done
 echo
 
-$DB_READY || error "数据库 30s 内未就绪，请检查: $COMPOSE logs db"
+$DB_READY || {
+  echo -e "\n${RED}数据库 60s 内未就绪，db 容器日志：${NC}"
+  $COMPOSE logs --tail=80 db
+  exit 1
+}
 info "数据库已就绪"
 
 # ── 初始化 / 迁移数据库 ───────────────────────────────────────────────────────
@@ -167,7 +196,9 @@ step "初始化数据库"
 if $COMPOSE exec -T api python -m app.db.init_db 2>&1; then
   info "数据库初始化完成"
 else
-  warn "init_db 返回非零，可能数据库已存在（这是正常的）"
+  echo -e "\n${RED}init_db 失败，api 容器日志：${NC}"
+  $COMPOSE logs --tail=80 api
+  warn "如果是「表已存在」错误属正常（重复部署），其他错误请检查上方日志"
 fi
 
 # ── 验证服务状态 ──────────────────────────────────────────────────────────────

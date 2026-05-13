@@ -251,7 +251,7 @@ docker run -d --name h3c-pg -p 5432:5432 \
 # 2. 后端
 cd backend
 python -m venv .venv && source .venv/bin/activate
-cp backend/.env.example backend/.env   # 编辑 backend/.env 填入 JWT_SECRET / ENCRYPTION_KEY / MINERU_API_KEY
+cp ../.env.example backend/.env   # 编辑 backend/.env：改 DATABASE_URL 为 localhost 地址，填入 JWT_SECRET / ENCRYPTION_KEY / MINERU_API_KEY
 pip install -e .
 python -m app.db.init_db      # 建表 + 创建默认 admin
 
