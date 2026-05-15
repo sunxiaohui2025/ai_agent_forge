@@ -13,9 +13,11 @@
 ## 系统预览图：
 | 图片1 | 图片2 |
 | :---: | :---: |
-| 动态UI图流式渲染<img width="1420" height="709" alt="截屏2026-05-15 11 58 47" src="https://github.com/user-attachments/assets/8c816571-43ea-44f3-a723-824301d5e4bb" /> | 技能调用生成PPT<img width="1426" height="697" alt="截屏2026-05-15 12 00 05" src="https://github.com/user-attachments/assets/b802b2ce-7c7e-41fd-be5e-8340e2d9344f" /> |
-| 文件预览下载 <img width="1433" height="701" alt="截屏2026-05-15 12 00 29" src="https://github.com/user-attachments/assets/2dd07129-b800-4115-b734-1ebb2ecfe571" />| 在线生成html图 <img width="1418" height="685" alt="截屏2026-05-15 12 09 10" src="https://github.com/user-attachments/assets/9c127d38-223f-4e47-85ef-6f2691e043ee" />|
-| 复杂图表渲染<img width="1439" height="796" alt="截屏2026-05-15 12 10 47" src="https://github.com/user-attachments/assets/54d81150-de82-4e5d-b6ca-323e18ff8031" />| MCP调用和表单渲染<img width="1429" height="792" alt="截屏2026-05-15 12 11 54" src="https://github.com/user-attachments/assets/05b9ad51-8b33-4fce-89e8-d826abe5fb40" />|
+| 动态UI图流式渲染<img width="1400" height="729" alt="截屏2026-05-15 11 58 47" src="https://github.com/user-attachments/assets/8c816571-43ea-44f3-a723-824301d5e4bb" /> | 技能调用生成PPT<img width="1440" height="727" alt="截屏2026-05-15 12 00 05" src="https://github.com/user-attachments/assets/b802b2ce-7c7e-41fd-be5e-8340e2d9344f" /> |
+| 文件预览下载 <img width="1400" height="729" alt="截屏2026-05-15 12 00 29" src="https://github.com/user-attachments/assets/2dd07129-b800-4115-b734-1ebb2ecfe571" />| 在线生成html图 <img width="1440" height="685" alt="截屏2026-05-15 12 09 10" src="https://github.com/user-attachments/assets/9c127d38-223f-4e47-85ef-6f2691e043ee" />|
+| 复杂原理动态效果图<img width="1400" height="729" alt="截屏2026-05-15 12 34 58" src="https://github.com/user-attachments/assets/d116f216-1551-4e17-8c3a-5ce162cd58aa" />| MCP调用和表单渲染<img width="1440" height="792" alt="截屏2026-05-15 12 11 54" src="https://github.com/user-attachments/assets/05b9ad51-8b33-4fce-89e8-d826abe5fb40" />|
+| 智能体动态配置<img width="1200" height="729" alt="截屏2026-05-15 12 31 49" src="https://github.com/user-attachments/assets/7b5892ba-090a-4143-b548-644ed989f680" />| 整体安全防控架构<img width="300" height="500" alt="image" src="https://github.com/user-attachments/assets/0d40572b-50e5-4f5a-9a97-937afc1a26fa" />
+
 
 
 ## 一、功能总览
