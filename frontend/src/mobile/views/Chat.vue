@@ -132,6 +132,26 @@
               </div>
               <div class="bubble-content" v-html="md.render(m.content_json?.text || '')"></div>
             </div>
+
+            <!-- 助手回答操作栏：复制 + 收藏 -->
+            <div
+              v-if="m.role === 'assistant' && m.content_json?.text && !m._streaming"
+              class="msg-actions"
+            >
+              <button class="msg-action" @click="copyAnswer(m)">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>复制</span>
+              </button>
+              <button
+                class="msg-action"
+                :class="{ active: isFavorited(m) }"
+                @click="toggleFavorite(m)"
+              >
+                <svg v-if="isFavorited(m)" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg v-else viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <span>{{ isFavorited(m) ? '已收藏' : '收藏' }}</span>
+              </button>
+            </div>
           </div>
         </div>
       </template>
@@ -397,6 +417,7 @@ onMounted(async () => {
     if (!conv) conv = { id: convId }
     try { await chat.selectConv(conv) } catch {}
   }
+  if (chat.messages.length) loadFavoritesForMessages(chat.messages)
   await scrollBottom()
   await refreshUnread()
   unreadTimer = setInterval(refreshUnread, 60_000)
@@ -572,6 +593,7 @@ async function onSelectConv(c: any) {
     await chat.selectConv(c)
     drawerOpen.value = false
     await scrollBottom()
+    loadFavoritesForMessages(chat.messages)
   } catch {}
 }
 
@@ -784,6 +806,83 @@ async function send() {
   }
 }
 
+// -------- Copy + Favorite --------
+const favByMessage = ref<Record<number, number>>({}) // message_id → favorite_id
+
+async function loadFavoritesForMessages(messages: any[]) {
+  const ids = messages.filter((m) => m.role === 'assistant' && m.id > 0).map((m) => m.id)
+  if (!ids.length) return
+  try {
+    const map = await api.checkFavorites(ids)
+    favByMessage.value = map || {}
+  } catch {}
+}
+
+function isFavorited(m: any): boolean {
+  if (!m?.id) return false
+  return !!favByMessage.value[m.id]
+}
+
+function plainTextFromMarkdown(src: string): string {
+  let s = src
+  s = s.replace(/```([\s\S]*?)```/g, (_m, code) => code)
+  s = s.replace(/`([^`]+)`/g, '$1')
+  s = s.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1')
+  s = s.replace(/__([^_]+)__/g, '$1').replace(/_([^_]+)_/g, '$1')
+  s = s.replace(/^#{1,6}\s+/gm, '')
+  s = s.replace(/^\s*[-*+]\s+/gm, '• ')
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+  return s
+}
+
+async function copyAnswer(m: any) {
+  const text = m.content_json?.text || ''
+  if (!text) return
+  const plain = plainTextFromMarkdown(text)
+  try {
+    await navigator.clipboard.writeText(plain)
+    showToast('已复制', 'success')
+  } catch {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = plain
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      ta.remove()
+      showToast('已复制', 'success')
+    } catch {
+      showToast('复制失败')
+    }
+  }
+}
+
+async function toggleFavorite(m: any) {
+  if (!m?.id) {
+    showToast('消息还未保存，稍后再试')
+    return
+  }
+  if (isFavorited(m)) {
+    try {
+      await api.deleteFavoriteByMessage(m.id)
+      const next = { ...favByMessage.value }
+      delete next[m.id]
+      favByMessage.value = next
+      showToast('已取消收藏', 'success')
+    } catch (e: any) {
+      showToast('操作失败')
+    }
+  } else {
+    try {
+      const fav = await api.createFavorite(m.id)
+      favByMessage.value = { ...favByMessage.value, [m.id]: fav.id }
+      showToast('已加入空间', 'success')
+    } catch (e: any) {
+      showToast('操作失败')
+    }
+  }
+}
+
 function applyEvent(m: any, ev: { type: string; data: any }) {
   const { type, data } = ev
   if (type === 'meta') m._meta = data
@@ -851,14 +950,14 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 .welcome-mark .dot { border-radius: 50%; }
 .d1 { background:#4285f4 } .d2 { background:#ea4335 }
 .d3 { background:#fbbc04 } .d4 { background:#34a853 }
-.welcome h2 { margin: 6px 0 4px; font-size: 18px; color: var(--m-text); font-weight: 600; }
-.welcome p { margin: 0; font-size: 13px; }
+.welcome h2 { margin: 6px 0 4px; font-size: 20px; color: var(--m-text); font-weight: 600; }
+.welcome p { margin: 0; font-size: 16px; }
 .welcome-intro {
   margin: 0; padding: 0 16px;
   max-width: 100%;
   color: var(--m-text-secondary, #5f6368);
   line-height: 1.6;
-  font-size: 13px;
+  font-size: 16px;
 }
 .welcome-starters {
   margin-top: 14px;
@@ -871,7 +970,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   appearance: none;
   width: 100%;
   text-align: left;
-  font-size: 13px; line-height: 1.5;
+  font-size: 16px; line-height: 1.5;
   padding: 10px 14px;
   border: 1px solid var(--m-border, #e8eaed);
   border-radius: 12px;
@@ -893,7 +992,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 .msg.assistant { justify-content: flex-start; }
 .bubble-stack {
   display: flex; flex-direction: column; gap: 6px;
-  max-width: 88%; min-width: 0;
+  max-width: 100%; min-width: 0;
 }
 .msg.user .bubble-stack { align-items: flex-end; }
 
@@ -902,7 +1001,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   padding: 7px 12px;
   background: var(--m-bg-soft);
   border-radius: var(--m-radius-pill);
-  font-size: 13px;
+  font-size: 16px;
   color: var(--m-text-secondary);
   align-self: flex-start;
 }
@@ -922,7 +1021,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   border: none;
   border-radius: var(--m-radius);
   background: var(--m-bg-soft);
-  font-size: 12.5px;
+  font-size: 14px;
 }
 .thinking-card summary {
   list-style: none; cursor: pointer;
@@ -971,7 +1070,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   border-radius: var(--m-radius);
   background: var(--m-bg-soft);
   padding: 0;
-  font-size: 12px;
+  font-size: 14px;
 }
 .step-card.running { background: var(--m-primary-soft); }
 .step-head {
@@ -983,21 +1082,21 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 }
 .step-head::-webkit-details-marker { display: none; }
 .step-kind {
-  text-transform: uppercase; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; font-size: 14px; font-weight: 700;
   background: var(--m-surface); padding: 1px 6px; border-radius: 4px;
   color: var(--m-text-secondary);
   flex-shrink: 0;
 }
 .step-card.running .step-kind { background: var(--m-primary); color: #fff; }
 .step-name {
-  font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--m-text);
+  font-family: ui-monospace, Menlo, monospace; font-size: 14px; color: var(--m-text);
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.step-dur { font-size: 10.5px; color: var(--m-text-tertiary); flex-shrink: 0; }
+.step-dur { font-size: 14px; color: var(--m-text-tertiary); flex-shrink: 0; }
 
 .step-io-toggle {
   display: inline-flex; align-items: center; gap: 3px;
-  color: var(--m-primary); font-size: 10px; font-weight: 500;
+  color: var(--m-primary); font-size: 14px; font-weight: 500;
   flex-shrink: 0; white-space: nowrap;
 }
 .step-chevron {
@@ -1013,10 +1112,10 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 }
 .step-block { margin-top: 6px; }
 .step-block:first-child { margin-top: 0; }
-.step-label { font-size: 10px; font-weight: 600; color: var(--m-text-secondary); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+.step-label { font-size: 14px; font-weight: 600; color: var(--m-text-secondary); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
 .step-block pre {
   margin: 0; padding: 6px 8px; background: var(--m-bg-soft);
-  border-radius: 4px; font-size: 11px; font-family: ui-monospace, Menlo, monospace;
+  border-radius: 4px; font-size: 14px; font-family: ui-monospace, Menlo, monospace;
   overflow: auto; max-height: 160px; white-space: pre-wrap; word-break: break-word;
 }
 
@@ -1038,10 +1137,10 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 }
 .file-meta { flex: 1; min-width: 0; }
 .file-name {
-  font-size: 13.5px; color: var(--m-text); font-weight: 500;
+  font-size: 16px; color: var(--m-text); font-weight: 500;
   max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.file-sub { font-size: 11.5px; color: var(--m-text-secondary); margin-top: 2px; }
+.file-sub { font-size: 14px; color: var(--m-text-secondary); margin-top: 2px; }
 .file-preview-hint { color: var(--m-primary); margin-left: 4px; }
 
 .ui-block { display: flex; flex-direction: column; gap: 8px; }
@@ -1057,7 +1156,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   padding: 10px 14px;
   background: var(--m-surface);
   border-radius: 16px;
-  font-size: 14.5px;
+  font-size: 16px;
   line-height: 1.6;
   word-break: break-word;
   box-shadow: var(--m-shadow-1);
@@ -1075,13 +1174,13 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   background: #f1f3f4; color: #202124;
   padding: 10px 12px; border-radius: 8px;
   overflow: auto; max-height: 320px;
-  font-size: 12px; line-height: 1.5;
+  font-size: 14px; line-height: 1.5;
   margin: 6px 0;
   font-family: ui-monospace, Menlo, monospace;
 }
 .bubble :deep(:not(pre) > code) {
   background: #f1f3f4; color: #c5221f;
-  padding: 1px 5px; border-radius: 4px; font-size: 12px;
+  padding: 1px 5px; border-radius: 4px; font-size: 14px;
 }
 .msg.user .bubble :deep(:not(pre) > code) { background: rgba(255,255,255,.18); color: #fff; }
 
@@ -1091,7 +1190,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   padding: 2px 8px;
   background: rgba(255,255,255,.18);
   border-radius: var(--m-radius-pill);
-  font-size: 11px;
+  font-size: 14px;
 }
 .msg-file-chip.clickable { cursor: pointer; }
 .msg.assistant .msg-file-chip { background: var(--m-surface-variant); color: var(--m-text-secondary); }
@@ -1109,7 +1208,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   background: var(--m-surface);
   border: none;
   border-radius: var(--m-radius-pill);
-  font-size: 11.5px;
+  font-size: 14px;
   max-width: 220px;
   box-shadow: var(--m-shadow-1);
 }
@@ -1120,7 +1219,7 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-weight: 500; color: var(--m-text);
 }
-.chip-meta { color: var(--m-text-secondary); font-size: 11px; }
+.chip-meta { color: var(--m-text-secondary); font-size: 14px; }
 .chip-meta.err { color: var(--m-danger); }
 .chip-close {
   width: 18px; height: 18px; border-radius: 50%;
@@ -1148,7 +1247,7 @@ textarea {
   flex: 1; min-width: 0;
   border: none; background: transparent;
   resize: none; outline: none;
-  font-size: 15px; line-height: 1.4;
+  font-size: 16px; line-height: 1.4;
   padding: 9px 4px;
   max-height: 140px; min-height: 22px;
 }
@@ -1198,14 +1297,14 @@ textarea {
 .brand-mark .dot { border-radius: 50%; }
 .brand-text { line-height: 1.2; }
 .brand-name { font-size: 16px; font-weight: 600; color: var(--m-text); letter-spacing: -.01em; }
-.brand-sub { font-size: 11.5px; color: var(--m-text-secondary); margin-top: 2px; }
+.brand-sub { font-size: 14px; color: var(--m-text-secondary); margin-top: 2px; }
 
 .conv-new {
   margin: 4px 12px 14px;
   display: flex; align-items: center; gap: 8px; justify-content: center;
   height: 42px; border-radius: 12px;
   background: var(--m-primary-soft); color: var(--m-primary);
-  font-weight: 500; font-size: 14px;
+  font-weight: 500; font-size: 16px;
   flex-shrink: 0;
 }
 .conv-new:active { background: rgba(66,133,244,.15); }
@@ -1219,7 +1318,7 @@ textarea {
   display: flex; align-items: center; gap: 10px;
   height: 38px; padding: 0 12px;
   border-radius: 10px;
-  font-size: 13.5px; color: var(--m-text);
+  font-size: 16px; color: var(--m-text);
   background: transparent;
   position: relative;
 }
@@ -1235,21 +1334,21 @@ textarea {
 
 .drawer-section-label {
   padding: 4px 18px 6px;
-  font-size: 11.5px; font-weight: 600;
+  font-size: 14px; font-weight: 600;
   color: var(--m-text-tertiary); letter-spacing: .04em;
   text-transform: uppercase;
 }
 .drawer-list { flex: 1; overflow: auto; padding: 0 8px 12px; }
 .empty {
   text-align: center; color: var(--m-text-tertiary);
-  padding: 24px; font-size: 13px;
+  padding: 24px; font-size: 16px;
 }
 .conv-item {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px;
   margin: 2px 0;
   border-radius: 10px;
-  font-size: 13.5px;
+  font-size: 16px;
   color: var(--m-text);
 }
 .conv-item:active { background: var(--m-surface-variant); }
@@ -1283,11 +1382,11 @@ textarea {
 }
 .user-info { flex: 1; min-width: 0; }
 .user-name {
-  font-size: 14px; font-weight: 600; color: var(--m-text);
+  font-size: 16px; font-weight: 600; color: var(--m-text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .user-role {
-  font-size: 11.5px; color: var(--m-text-secondary); margin-top: 2px;
+  font-size: 14px; color: var(--m-text-secondary); margin-top: 2px;
 }
 .user-settings {
   width: 36px; height: 36px; border-radius: 50%;
@@ -1311,10 +1410,10 @@ textarea {
   font-weight: 600; flex-shrink: 0;
 }
 .agent-text { flex: 1; min-width: 0; }
-.agent-name { font-size: 15px; font-weight: 500; color: var(--m-text); }
+.agent-name { font-size: 16px; font-weight: 500; color: var(--m-text); }
 .agent-desc {
   margin-top: 2px;
-  font-size: 12.5px; color: var(--m-text-secondary); line-height: 1.5;
+  font-size: 14px; color: var(--m-text-secondary); line-height: 1.5;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .agent-item.active .agent-name { color: var(--m-primary); }
@@ -1323,7 +1422,7 @@ textarea {
 /* Action sheet items */
 .action-item {
   padding: 14px 16px;
-  text-align: center; font-size: 15px;
+  text-align: center; font-size: 16px;
   border-bottom: none;
   position: relative;
 }
@@ -1343,22 +1442,45 @@ textarea {
 /* Change password fields */
 .pwd-body { padding: 12px 16px 24px; display: flex; flex-direction: column; gap: 14px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
-.field span { font-size: 13px; color: var(--m-text-secondary); padding-left: 2px; }
+.field span { font-size: 16px; color: var(--m-text-secondary); padding-left: 2px; }
 .field input {
   height: 44px; padding: 0 14px;
   border: none;
   background: var(--m-bg-soft);
   border-radius: 12px;
-  font-size: 15px; outline: none;
+  font-size: 16px; outline: none;
 }
 .field input:focus { background: var(--m-surface); box-shadow: 0 0 0 2px var(--m-primary); }
 
 .primary-btn {
   height: 46px; margin-top: 6px;
   background: var(--m-primary); color: #fff;
-  border-radius: 12px; font-size: 15px; font-weight: 500;
+  border-radius: 12px; font-size: 16px; font-weight: 500;
   display: flex; align-items: center; justify-content: center;
 }
 .primary-btn:active { background: var(--m-primary-hover); }
 .primary-btn:disabled { background: var(--m-border-strong); }
+
+/* Message action bar: copy + favorite */
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  padding: 2px 0;
+  align-self: flex-start;
+}
+.msg-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 14px;
+  color: var(--m-text-secondary);
+  background: var(--m-bg-soft);
+  border: 1px solid var(--m-border);
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s, color .15s;
+}
+.msg-action:active { background: var(--m-surface-variant); }
+.msg-action.active { color: var(--m-primary); border-color: var(--m-primary); }
 </style>

@@ -138,6 +138,12 @@ export const api = {
     return get(`/api/favorites?${qs.toString()}`)
   },
   deleteFavorite: (id: number) => del(`/api/favorites/${id}`),
+  createFavorite: (message_id: number, note?: string) =>
+    post('/api/favorites', { message_id, note }),
+  deleteFavoriteByMessage: (message_id: number) =>
+    del(`/api/favorites/by-message/${message_id}`),
+  checkFavorites: (message_ids: number[]) =>
+    get(`/api/favorites/check?message_ids=${message_ids.join(',')}`),
   refreshDownload: (output_path: string) => {
     const qs = new URLSearchParams({ output_path })
     return post(`/api/downloads/refresh?${qs.toString()}`)
