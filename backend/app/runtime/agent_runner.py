@@ -706,8 +706,126 @@ class AgentRunner:
                 except Exception as e:  # noqa: BLE001
                     registered.append({"error": f"register failed: {e}"})
         result.pop("_files", None)
-        result["files"] = registered
+        # Expose only descriptive fields to the model; download_url is for the
+        # UI file-card layer and would be rendered as broken markdown links.
+        result["files"] = [
+            {k: v for k, v in item.items() if k not in ("download_url",)}
+            for item in registered
+        ]
         return result
+
+    async def _register_mcp_files(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Register files produced by an MCP tool call so they surface as
+        downloadable cards in the chat UI.
+
+        Each entry in `_files` may supply the content in one of three ways
+        (tried in order):
+          1. path       — absolute local path (same-host MCP only)
+          2. content    — plain text string (written as UTF-8)
+          3. content_b64 — base64-encoded bytes (written as binary)
+
+        Looks for `_files` at the top level of `result` or nested under
+        `result["data"]` (where `_call_mcp_tool_once` places parsed JSON).
+        """
+        if not isinstance(result, dict):
+            return result
+        candidates: list[tuple[dict, str]] = []
+        if isinstance(result.get("_files"), list):
+            candidates.append((result, "_files"))
+        data = result.get("data")
+        if isinstance(data, dict) and isinstance(data.get("_files"), list):
+            candidates.append((data, "_files"))
+        if not candidates:
+            return result
+
+        import base64 as _b64
+        import mimetypes as _mt
+        import uuid as _uuid
+        from pathlib import Path as _P
+        from ..core.config import settings
+        from ..db.session import SessionLocal
+        from ..services.downloads import register_file
+
+        registered: list[dict[str, Any]] = []
+        for container, key in candidates:
+            files = container.get(key) or []
+            async with SessionLocal() as db:
+                for f in files:
+                    if not isinstance(f, dict):
+                        continue
+                    name = str(f.get("name") or "file").strip()
+                    mime = f.get("mime") or _mt.guess_type(name)[0] or "application/octet-stream"
+                    try:
+                        # ---- resolve content bytes ----
+                        file_bytes: bytes | None = None
+                        fp = str(f.get("path") or "").strip()
+                        if fp:
+                            abs_p = _P(fp).expanduser().resolve()
+                            if abs_p.is_file():
+                                file_bytes = abs_p.read_bytes()
+                        if file_bytes is None and f.get("content_b64"):
+                            file_bytes = _b64.b64decode(f["content_b64"])
+                        if file_bytes is None and f.get("content") is not None:
+                            file_bytes = str(f["content"]).encode("utf-8")
+                        if file_bytes is None:
+                            registered.append({"error": f"no content for file: {name}"})
+                            continue
+
+                        # ---- write to outputs dir ----
+                        out_root = _P(settings.STORAGE_ROOT) / "outputs" / str(self._user_id or "anon")
+                        out_root.mkdir(parents=True, exist_ok=True)
+                        safe = _P(name).name or "output"
+                        target = out_root / f"{_uuid.uuid4().hex[:8]}-{safe}"
+                        target.write_bytes(file_bytes)
+
+                        # ---- register download token ----
+                        tok = await register_file(
+                            db,
+                            file_path=str(target),
+                            file_name=name,
+                            user_id=self._user_id,
+                            mime=mime,
+                        )
+                        await db.commit()
+                        info = {
+                            "name": tok.file_name, "size": tok.size, "mime": tok.mime,
+                            "download_url": f"/api/downloads/{tok.token}",
+                            "preview_url": f"/api/downloads/{tok.token}",
+                        }
+                        registered.append(info)
+                        self._saved_files.append(info)
+                    except Exception as e:  # noqa: BLE001
+                        registered.append({"error": f"register failed: {e}"})
+            container.pop(key, None)
+        if registered:
+            # Strip download/preview URLs from what the model sees — the UI
+            # renders file cards via _saved_files SSE events. Exposing raw
+            # /api/downloads/ URLs causes the model to write them into reply
+            # text as markdown links, which break when opened in the browser
+            # without an auth header.
+            result["files"] = [
+                {k: v for k, v in f.items() if k not in ("download_url", "preview_url")}
+                for f in registered
+            ]
+        return result
+
+    async def _maybe_register_files_from_tool_result(self, content: str) -> None:
+        """Anthropic-SDK path: tool_result content is a raw string. If the MCP
+        tool returned JSON with a `_files` array, parse it and register the
+        files so they appear as download cards. No-op for non-JSON content."""
+        if not content or not self._user_id:
+            return
+        s = content.strip()
+        if not (s.startswith("{") and s.endswith("}")):
+            return
+        try:
+            import json as _json
+            parsed = _json.loads(s)
+        except Exception:
+            return
+        if not isinstance(parsed, dict):
+            return
+        await self._register_mcp_files(parsed)
 
     async def _load_skill_bundle(self, skill) -> dict[str, Any]:
         from pathlib import Path as _Path
@@ -985,7 +1103,7 @@ class AgentRunner:
         self._saved_files.append(info)
         return {
             "ok": True,
-            "file": info,
+            "file": {"name": safe, "size": size, "mime": mime},
             "message": f"已保存 {safe} ({size} bytes)。前端会显示文件卡片,无需把内容再粘贴给用户。",
         }
 
@@ -1220,6 +1338,7 @@ class AgentRunner:
             if mcp_match:
                 m, raw = mcp_match
                 result = await self._call_mcp_tool_once(m, raw, params)
+                result = await self._register_mcp_files(result)
             else:
                 result = await self._exec_skill(tool, params)
         except Exception as e:  # noqa: BLE001
@@ -1503,6 +1622,10 @@ class AgentRunner:
                         result = tool_results_by_id.get(str(tu["id"]), "")
                         if not isinstance(result, str):
                             result = _json.dumps(result, ensure_ascii=False, default=str)
+                        # Cap individual tool_result to avoid bloating the context
+                        # window when replaying history (e.g. MCP returning large docs).
+                        if len(result) > 6000:
+                            result = result[:6000] + f"…[历史摘要已截断, 原始长度 {len(result)} 字符]"
                         messages.append({"role": "tool", "tool_call_id": str(tu["id"]), "content": result})
                 elif text:
                     messages.append({"role": "assistant", "content": text})
@@ -1586,9 +1709,11 @@ class AgentRunner:
                     create_kwargs["tools"] = tools
                 if model.extra_params_json:
                     create_kwargs["extra_body"] = model.extra_params_json
-                if effort_oa:
-                    # Prefer top-level reasoning_effort; if the SDK rejects it the
-                    # provider may surface an error which is fine for visibility.
+                # reasoning_effort is only supported by OpenAI and DeepSeek.
+                # Local / openai-compatible servers (vllm, ollama, etc.) return 500
+                # on unknown parameters, so only send it to known providers.
+                _REASONING_EFFORT_PROVIDERS = {"openai", "deepseek"}
+                if effort_oa and (model.provider or "").lower() in _REASONING_EFFORT_PROVIDERS:
                     create_kwargs["reasoning_effort"] = effort_oa
 
                 stream = await client.chat.completions.create(**create_kwargs)
@@ -1666,6 +1791,7 @@ class AgentRunner:
                         if slot["name"] in mcp_tool_routes:
                             raw_tool, mcp_row = mcp_tool_routes[slot["name"]]
                             result = await self._call_mcp_tool_once(mcp_row, raw_tool, args)
+                            result = await self._register_mcp_files(result)
                         else:
                             result = await self._exec_skill(slot["name"], args)
                     except Exception as e:  # noqa: BLE001
@@ -2055,9 +2181,11 @@ class AgentRunner:
                     for block in getattr(msg, "content", []) or []:
                         btype = type(block).__name__
                         if btype == "ToolResultBlock":
+                            tr_content = str(getattr(block, "content", ""))
+                            await self._maybe_register_files_from_tool_result(tr_content)
                             yield StreamEvent("tool_result", {
                                 "tool_use_id": getattr(block, "tool_use_id", ""),
-                                "content": str(getattr(block, "content", "")),
+                                "content": tr_content,
                             })
 
                 # ---- complete assistant message: only used as a fallback if partials were skipped ----
@@ -2067,9 +2195,11 @@ class AgentRunner:
                     for block in getattr(msg, "content", []) or []:
                         btype = type(block).__name__
                         if btype == "ToolResultBlock":
+                            tr_content = str(getattr(block, "content", ""))
+                            await self._maybe_register_files_from_tool_result(tr_content)
                             yield StreamEvent("tool_result", {
                                 "tool_use_id": getattr(block, "tool_use_id", ""),
-                                "content": str(getattr(block, "content", "")),
+                                "content": tr_content,
                             })
 
                 elif mtype == "ResultMessage":

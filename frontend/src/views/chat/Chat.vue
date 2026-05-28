@@ -97,14 +97,19 @@
                       <el-icon v-else-if="s.status === 'done'" style="color:var(--m-success)"><CircleCheckFilled /></el-icon>
                       <el-icon v-else><Tools /></el-icon>
                       <span class="step-kind">{{ s.kind }}</span>
-                      <code class="step-name">{{ s.name }}</code>
+                      <span class="step-name">{{ s.label || s.name }}</span>
+                      <span v-if="s.serverName" class="step-server">{{ s.serverName }}</span>
                       <span v-if="s.duration_ms" class="muted step-dur">{{ s.duration_ms }}ms</span>
-                      <span v-if="s.input || s.output" class="step-io-toggle">
-                        <span class="step-io-label">输入/输出</span>
+                      <span v-if="s.input || s.output || s.name" class="step-io-toggle">
+                        <span class="step-io-label">详情</span>
                         <svg class="step-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>
                       </span>
                     </summary>
-                    <div v-if="s.input || s.output" class="step-body">
+                    <div class="step-body">
+                      <div class="step-block step-id-row">
+                        <span class="step-label">工具 ID</span>
+                        <code class="step-raw-name">{{ s.name }}</code>
+                      </div>
                       <div v-if="s.input" class="step-block"><div class="step-label">Input</div><pre>{{ formatStepData(s.input) }}</pre></div>
                       <div v-if="s.output" class="step-block"><div class="step-label">Output</div><pre>{{ formatStepData(s.output) }}</pre></div>
                     </div>
@@ -274,6 +279,7 @@ import AgentCapabilityDrawer from '@/components/AgentCapabilityDrawer.vue'
 import MessageDispatcher from '@/agent-ui/engine/MessageDispatcher.vue'
 import { InfoFilled, Loading } from '@element-plus/icons-vue'
 import { parseMessageContent } from '@/lib/widget-parser'
+import { resolveToolMeta } from '@/lib/toolDisplay'
 
 const md = new MarkdownIt({ breaks: true, linkify: true })
 const chat = useChat()
@@ -556,9 +562,12 @@ function normalizeTrace(trace: any[] | undefined) {
         continue
       }
       stepIndex[id] = steps.length
+      const meta = resolveToolMeta(data.name || '')
       steps.push({
-        kind: data.name?.startsWith('mcp_') ? 'mcp' : 'tool',
+        kind: meta.kind,
         name: data.name || '(tool)',
+        label: meta.label,
+        serverName: meta.serverName,
         input: data.input,
         status: 'done',
       })
@@ -812,9 +821,12 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
     }
     const idx = m._steps.length
     m._stepIndex[id] = idx
+    const meta = resolveToolMeta(data.name || '')
     m._steps.push({
-      kind: data.name?.startsWith('mcp_') ? 'mcp' : 'tool',
+      kind: meta.kind,
       name: data.name || '(tool)',
+      label: meta.label,
+      serverName: meta.serverName,
       input: data.input,
       status: 'running',
       _start: performance.now(),
@@ -1153,7 +1165,12 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   flex-shrink: 0;
 }
 .step-card.running .step-kind { background: var(--m-primary); color: #fff; }
-.step-name { font-family: 'Roboto Mono', monospace; font-size: 12px; color: var(--m-text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-name { font-size: 13px; color: var(--m-text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-server {
+  font-size: 11px; color: var(--m-text-secondary);
+  background: var(--m-surface-variant); padding: 1px 6px; border-radius: 3px;
+  flex-shrink: 0; font-style: italic;
+}
 .step-dur { font-size: 11px; flex-shrink: 0; }
 
 .step-io-toggle {
@@ -1173,6 +1190,8 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
   border-top: 1px solid var(--m-border);
   background: color-mix(in srgb, var(--m-bg-soft) 50%, var(--m-surface));
 }
+.step-id-row { display: flex; align-items: center; gap: 8px; padding: 8px 0 4px; }
+.step-raw-name { font-family: 'Roboto Mono', monospace; font-size: 11px; color: var(--m-text-secondary); word-break: break-all; }
 .step-block { margin-top: 8px; }
 .step-block:first-child { margin-top: 0; }
 .step-label { font-size: 11px; font-weight: 600; color: var(--m-text-secondary); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }

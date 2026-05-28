@@ -69,14 +69,19 @@
               >
                 <summary class="step-head">
                   <span class="step-kind">{{ s.kind }}</span>
-                  <span class="step-name">{{ s.name }}</span>
+                  <span class="step-name">{{ s.label || s.name }}</span>
+                  <span v-if="s.serverName" class="step-server">{{ s.serverName }}</span>
                   <span v-if="s.duration_ms" class="step-dur">{{ s.duration_ms }}ms</span>
-                  <span v-if="s.input || s.output" class="step-io-toggle">
-                    <span class="step-io-label">输入/输出</span>
+                  <span v-if="s.input || s.output || s.name" class="step-io-toggle">
+                    <span class="step-io-label">详情</span>
                     <svg class="step-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 6 8 10 12 6"/></svg>
                   </span>
                 </summary>
-                <div v-if="s.input || s.output" class="step-body">
+                <div class="step-body">
+                  <div class="step-block step-id-row">
+                    <span class="step-label">工具 ID</span>
+                    <code class="step-raw-name">{{ s.name }}</code>
+                  </div>
                   <div v-if="s.input" class="step-block">
                     <div class="step-label">Input</div>
                     <pre>{{ formatJson(s.input) }}</pre>
@@ -352,6 +357,7 @@ import { api } from '../api'
 import { showToast } from '../toast'
 import PreviewSheet from '../components/PreviewSheet.vue'
 import MessageDispatcher from '@/agent-ui/engine/MessageDispatcher.vue'
+import { resolveToolMeta } from '@/lib/toolDisplay'
 
 const md = new MarkdownIt({ breaks: true, linkify: true })
 const chat = useMobileChat()
@@ -551,9 +557,12 @@ function normalizeTrace(trace: any[] | undefined) {
         continue
       }
       stepIndex[id] = steps.length
+      const meta = resolveToolMeta(data.name || '')
       steps.push({
-        kind: data.name?.startsWith('mcp_') ? 'mcp' : 'tool',
+        kind: meta.kind,
         name: data.name || '(tool)',
+        label: meta.label,
+        serverName: meta.serverName,
         input: data.input,
         output: undefined,
         status: 'done',
@@ -921,9 +930,12 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
     }
     const idx = m._steps.length
     m._stepIndex[id] = idx
+    const meta = resolveToolMeta(data.name || '')
     m._steps.push({
-      kind: data.name?.startsWith('mcp_') ? 'mcp' : 'tool',
+      kind: meta.kind,
       name: data.name || '(tool)',
+      label: meta.label,
+      serverName: meta.serverName,
       input: data.input,
       status: 'running',
       _start: performance.now(),
@@ -1112,9 +1124,16 @@ function applyEvent(m: any, ev: { type: string; data: any }) {
 }
 .step-card.running .step-kind { background: var(--m-primary); color: #fff; }
 .step-name {
-  font-family: ui-monospace, Menlo, monospace; font-size: 14px; color: var(--m-text);
+  font-size: 14px; color: var(--m-text);
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.step-server {
+  font-size: 11px; color: var(--m-text-secondary);
+  background: var(--m-surface); padding: 1px 5px; border-radius: 3px;
+  flex-shrink: 0; font-style: italic;
+}
+.step-raw-name { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--m-text-secondary); word-break: break-all; }
+.step-id-row { display: flex; align-items: center; gap: 6px; padding: 6px 0 2px; }
 .step-dur { font-size: 14px; color: var(--m-text-tertiary); flex-shrink: 0; }
 
 .step-io-toggle {

@@ -18,6 +18,54 @@ from ..runtime.agent_runner import AgentRunner, AgentContext
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
+# Large fields that bloat tool_result history — replace with a byte-count summary.
+# word_base64 / content_b64 are base64-encoded binaries; markdown_content /
+# content are full document text. Neither is needed for conversation replay;
+# the model only needs to know the tool succeeded and which files were produced.
+_LARGE_RESULT_FIELDS = frozenset({
+    "word_base64", "content_b64", "markdown_content", "markdown",
+    "content", "audit",
+})
+_RESULT_CONTENT_CHAR_LIMIT = 4000  # keep at most this many chars of tool_result content
+
+
+def _slim_trace_event(event: dict) -> dict:
+    """Strip large inline fields from tool_result trace entries before
+    persisting to the DB. The trimmed version is still sufficient for the
+    model to understand what tools were called and what they produced."""
+    if not isinstance(event, dict) or event.get("type") != "tool_result":
+        return event
+    data = event.get("data")
+    if not isinstance(data, dict):
+        return event
+    content_str = data.get("content")
+    if not isinstance(content_str, str):
+        return event
+    try:
+        parsed = json.loads(content_str)
+    except Exception:
+        # Plain text result — just cap length
+        if len(content_str) > _RESULT_CONTENT_CHAR_LIMIT:
+            slimmed = content_str[:_RESULT_CONTENT_CHAR_LIMIT] + f"…[已截断, 共 {len(content_str)} 字符]"
+            return {**event, "data": {**data, "content": slimmed}}
+        return event
+    if not isinstance(parsed, dict):
+        return event
+    changed = False
+    for key in list(parsed.keys()):
+        if key in _LARGE_RESULT_FIELDS:
+            val = parsed[key]
+            size = len(val) if isinstance(val, str) else len(json.dumps(val, ensure_ascii=False))
+            parsed[key] = f"[已省略, {size} 字符]"
+            changed = True
+    if not changed:
+        # Even if no known large fields, cap total length
+        slim_str = json.dumps(parsed, ensure_ascii=False)
+        if len(slim_str) <= _RESULT_CONTENT_CHAR_LIMIT:
+            return event
+        return {**event, "data": {**data, "content": slim_str[:_RESULT_CONTENT_CHAR_LIMIT] + "…[截断]"}}
+    return {**event, "data": {**data, "content": json.dumps(parsed, ensure_ascii=False)}}
+
 
 @router.get("/agents/default", response_model=AgentOut | None)
 async def my_default_agent(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
@@ -457,7 +505,7 @@ async def send_message(
                                 if ev.type == "ui":
                                     saved_uis.append(ev.data if isinstance(ev.data, dict) else {})
                                 elif ev.type == "tool_use" or ev.type == "tool_result":
-                                    tool_traces.append(payload_json)
+                                    tool_traces.append(_slim_trace_event(payload_json))
                                 elif ev.type == "file":
                                     saved_files.append(ev.data if isinstance(ev.data, dict) else {})
                                 elif ev.type == "done":
@@ -475,7 +523,7 @@ async def send_message(
                         elif ev.type == "thinking":
                             thinking_parts.append(ev.data.get("text", ""))
                         elif ev.type in ("tool_use", "tool_result"):
-                            tool_traces.append(payload_json)
+                            tool_traces.append(_slim_trace_event(payload_json))
                         elif ev.type == "file":
                             saved_files.append(ev.data if isinstance(ev.data, dict) else {})
                         elif ev.type == "ui":
