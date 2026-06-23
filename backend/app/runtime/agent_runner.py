@@ -256,6 +256,10 @@ class AgentRunner:
         self._saved_ui: list[dict[str, Any]] = []
         # Buffer of assistant text used by the stream-tail fallback extractor
         self._fallback_text_buf: list[str] = []
+        # Per-turn safe workspaces for run_skill_script. Reused across multiple
+        # tool calls in the same response so an agent can create sources in one
+        # call and merge them in a later call without touching the real skill dir.
+        self._skill_workspaces: dict[str, str] = {}
         # Set to True the moment the model calls `load_widget_guidelines` —
         # signals "I'm rendering via widget pipeline this turn", so any later
         # save_output_file with widget-shaped content is rejected to avoid
@@ -378,6 +382,8 @@ class AgentRunner:
                     "适用于 PPT(.html)、文档(.md/.docx)、PDF、代码、报告等任何需要交付给用户的产物。"
                     "调用本工具后,前端会显示一张文件卡片,用户可下载或在右侧分屏预览。"
                     "禁止把大段 HTML/Markdown/代码直接打字给用户 —— 一律改为调用本工具保存。"
+                    "但如果已加载 Skill 明确要求通过 run_skill_script 生成最终产物,不要用本工具保存中间文件,"
+                    "也不要为调用本工具而手动拼接最终文件。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -405,7 +411,7 @@ class AgentRunner:
         })
         # Run a python script that's bundled inside a path-based atomic skill.
         # We call it as an in-process function (no Bash needed). The script must
-        # expose a callable named `generate` (preferred) or be importable; we run
+        # expose a callable named `generate` or `run`; we run
         # it inside a sandboxed namespace so we don't pollute the parent process.
         if any(s.type == "atomic" and (s.source_json or {}).get("path") for s in self.ctx.skills):
             tools.append({
@@ -413,22 +419,47 @@ class AgentRunner:
                 "function": {
                     "name": "run_skill_script",
                     "description": (
-                        "运行已加载 Skill 目录下的 Python 脚本(如 scripts/generate_docx.py)生成产物。"
-                        "脚本必须导出名为 generate 的函数;调用后我们会自动把 output_filename 指向的产物文件登记为可下载文件。"
-                        "用例:公文生成、表格导出、PDF 渲染等需要执行 Python 的场景。"
+                        "安全运行已加载 Skill 目录下的 Python 脚本。"
+                        "脚本可导出 generate(**kwargs) 或 run(**kwargs)。"
+                        "平台会注入可选的 output/output_path 供产物型脚本写文件；"
+                        "也支持只返回结构化 JSON 的校验/计算型脚本。"
+                        "当 Skill 文档要求由脚本生成最终产物时,必须优先调用本工具。"
+                        "如果中间文件无法被脚本读取,应改用 Skill 提供的 payload/一次性生成脚本,"
+                        "不要因为不能用 Bash 或路径失败就手动拼接文件。"
                     ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "skill": {"type": "string", "description": "Skill 的 code"},
                             "script": {"type": "string",
-                                        "description": "相对 Skill 根目录的脚本路径,如 scripts/generate_docx.py"},
+                                        "description": "相对 Skill 根目录的脚本路径,如 scripts/merge_deck.py"},
                             "kwargs": {"type": "object",
-                                        "description": "传给脚本 generate(**kwargs) 的参数字典"},
+                                        "description": "传给脚本 generate/run(**kwargs) 的参数字典"},
+                            "files": {
+                                "type": "array",
+                                "description": (
+                                    "可选。运行脚本前写入本次安全工作区的输入文件列表。"
+                                    "用于需要 sources/、临时配置、CSV、HTML 分页等中间文件的 Skill。"
+                                    "path 必须是相对路径,不能以 / 开头,不能包含 ..。"
+                                ),
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "path": {"type": "string", "description": "工作区内相对路径,如 ai-tech-deck/sources/slide-01.html"},
+                                        "content": {"type": "string", "description": "文件内容。文本默认 utf-8,二进制可 base64"},
+                                        "encoding": {"type": "string", "description": "utf-8 或 base64,默认 utf-8"},
+                                    },
+                                    "required": ["path", "content"],
+                                },
+                            },
+                            "workdir": {
+                                "type": "string",
+                                "description": "可选。脚本输入工作目录的相对路径,如 ai-tech-deck。会映射到安全工作区内的绝对路径。",
+                            },
                             "output_filename": {"type": "string",
-                                        "description": "希望最终交付给用户的文件名,如 '关于xx的通知.docx'。会自动落到隔离目录"},
+                                        "description": "可选。产物型脚本希望最终交付给用户的文件名,如 'slides.html'。会自动落到隔离目录"},
                         },
-                        "required": ["skill", "script", "kwargs", "output_filename"],
+                        "required": ["skill", "script", "kwargs"],
                     },
                 },
             })
@@ -612,7 +643,9 @@ class AgentRunner:
                 skill=str(args.get("skill") or ""),
                 script=str(args.get("script") or ""),
                 kwargs=args.get("kwargs") or {},
-                output_filename=str(args.get("output_filename") or "output.bin"),
+                output_filename=args.get("output_filename") or None,
+                files=args.get("files") or None,
+                workdir=args.get("workdir") or None,
             )
 
         # Solution Pack runner (special tool injected as run_pack__<pack_code>)
@@ -1059,6 +1092,67 @@ class AgentRunner:
         if not mime:
             mime = _mt.guess_type(safe)[0] or "application/octet-stream"
 
+        # Guardrail for PPT HTML skills: if the model tries to save a hand-built
+        # deck, reject it before it reaches the user. Valid decks generated by
+        # the bundled merge/generate scripts contain these runtime markers.
+        if encoding != "base64" and ext == ".html" and isinstance(content, str):
+            has_ppt_skill = any(
+                (s.source_json or {}).get("path")
+                and ((_Path((s.source_json or {}).get("path", "")) / "scripts" / "validate_deck_contract.py").exists())
+                and ("ppt" in (s.code or "").lower() or "slide" in (s.code or "").lower() or "keynote" in (s.code or "").lower())
+                for s in self.ctx.skills
+            )
+            lower_sample = content[:20000].lower()
+            looks_like_deck = (
+                'class="slide' in lower_sample
+                or "class='slide" in lower_sample
+                or "slide-stage" in lower_sample
+                or "overviewgrid" in lower_sample
+                or "edittoolbar" in lower_sample
+            )
+            if has_ppt_skill and looks_like_deck:
+                required_markers = (
+                    'id="overviewGrid"',
+                    'id="editToolbar"',
+                    'id="pageText"',
+                    'id="prevBtn"',
+                    'id="nextBtn"',
+                    "slide-stage",
+                    "data-source=",
+                    "iframe.srcdoc",
+                    "deckStyleClass",
+                )
+                missing = [m for m in required_markers if m not in content]
+                escaped_runtime = "\\`" in content or "\\${" in content
+                bare_slides: list[int] = []
+                layout_token_re = _re.compile(
+                    r"^(layout-|text-page-clean$|split$|stack-vertical$|full-image$|icons-grid$|"
+                    r"cards-[23]$|grid-4$|multi-columns$|compare-2$|table$|timeline-[hv]$|"
+                    r"flow$|branch$|tree$|radial$|nested$|chart-card$|problem-solution$|"
+                    r"goal-plan$|statement-stage$|thanks$)"
+                )
+                section_tags = _re.findall(r"<section\b[^>]*>", content, flags=_re.S | _re.I)
+                slide_index = 0
+                for tag in section_tags:
+                    class_match = _re.search(r"class=([\"'])(.*?)\1", tag, flags=_re.S)
+                    tokens = class_match.group(2).split() if class_match else []
+                    if "slide" not in tokens:
+                        continue
+                    slide_index += 1
+                    if not any(layout_token_re.search(token) for token in tokens):
+                        bare_slides.append(slide_index)
+                if missing or escaped_runtime or bare_slides:
+                    return {
+                        "error": (
+                            "检测到这是 PPT/slide HTML,但缺少 canonical runtime 或存在转义脚本。"
+                            "或者部分页面没有明确模板布局类。请不要手动拼接最终 HTML;调用 run_skill_script 执行当前 PPT skill 的 "
+                            "scripts/generate_deck.py,并设置 output_filename 生成最终文件。"
+                        ),
+                        "missing_markers": missing,
+                        "escaped_runtime": escaped_runtime,
+                        "bare_slide_numbers": bare_slides[:20],
+                    }
+
         outputs_root = _Path(settings.STORAGE_ROOT) / "outputs" / str(self._user_id or "anon")
         outputs_root.mkdir(parents=True, exist_ok=True)
         target = outputs_root / f"{_uuid.uuid4().hex[:8]}-{safe}"
@@ -1139,14 +1233,19 @@ class AgentRunner:
             await self._save_output_file(filename=f"output-{idx}.{ext}", content=body)
 
     async def _run_skill_script(
-        self, skill: str, script: str, kwargs: dict[str, Any], output_filename: str,
+        self,
+        skill: str,
+        script: str,
+        kwargs: dict[str, Any],
+        output_filename: str | None = None,
+        files: list[dict[str, Any]] | None = None,
+        workdir: str | None = None,
     ) -> dict[str, Any]:
         """Execute a bundled Skill python script as an in-process function call.
 
-        Contract: the script must define `generate(**kwargs) -> str` returning the
-        path of the file it produced (or accept an `output` kwarg with the target path).
-        We pass the safe target path automatically and the script is expected to
-        write to that exact location.
+        Contract: the script must define `generate(**kwargs)` or `run(**kwargs)`.
+        It may return a produced file path, write to the injected output path, or
+        return a structured JSON-serializable result for validation/calculation tasks.
 
         Security:
         - Script must live inside the skill directory (no escapes).
@@ -1163,6 +1262,7 @@ class AgentRunner:
         import asyncio as _asyncio
         import inspect as _inspect
         import mimetypes as _mt
+        import base64 as _base64
         from ..core.config import settings
         from ..db.session import SessionLocal
         from ..services.downloads import register_file
@@ -1181,20 +1281,182 @@ class AgentRunner:
         if not script_path.exists() or script_path.suffix.lower() != ".py":
             return {"error": f"script not found or not .py: {script}"}
 
-        # Prepare output target (force into outputs/<user_id>/)
-        safe = _re.sub(r"[^\w\.\-]+", "_", output_filename).strip("._-") or "output"
+        # Prepare optional output target (force into outputs/<user_id>/). Even
+        # validation-only scripts receive this path, but they are not required to use it.
+        safe = _re.sub(r"[^\w\.\-]+", "_", output_filename or "output.bin").strip("._-") or "output.bin"
         if len(safe) > 120:
             safe = safe[-120:]
         outputs_root = _Path(settings.STORAGE_ROOT) / "outputs" / str(self._user_id or "anon")
         outputs_root.mkdir(parents=True, exist_ok=True)
         target_path = outputs_root / f"{_uuid.uuid4().hex[:8]}-{safe}"
 
-        # Inject the target path into kwargs under a few common parameter names
-        # The script can use whichever it likes.
+        # Normalize kwargs early so misplaced files/workdir can still create a
+        # workspace. Models often put these fields inside kwargs despite the
+        # top-level schema.
         if isinstance(kwargs, dict):
             call_kwargs = dict(kwargs)
         else:
             return {"error": "kwargs must be an object"}
+        if files is None:
+            nested_files = (
+                call_kwargs.pop("files", None)
+                or call_kwargs.pop("_files", None)
+                or call_kwargs.pop("input_files", None)
+                or call_kwargs.pop("workspace_files", None)
+            )
+            if nested_files is not None:
+                files = nested_files
+        if workdir is None:
+            nested_workdir = call_kwargs.pop("workdir", None) or call_kwargs.pop("cwd", None)
+            if nested_workdir is not None:
+                workdir = str(nested_workdir)
+
+        path_like_keys = {
+            "deck",
+            "deck_folder",
+            "folder",
+            "input",
+            "input_file",
+            "input_path",
+            "source",
+            "source_file",
+            "source_path",
+            "target",
+            "target_file",
+            "target_path",
+        }
+        workspace_key = f"{skill}:{script_path.parent}"
+        has_relative_workspace_ref = any(
+            key in call_kwargs
+            and isinstance(call_kwargs.get(key), str)
+            and str(call_kwargs.get(key)).strip()
+            and "://" not in str(call_kwargs.get(key))
+            and not _Path(str(call_kwargs.get(key))).is_absolute()
+            for key in path_like_keys
+        )
+
+        # Per-run input workspace. This lets complex skills prepare temporary
+        # source files without writing into the real skill directory or using
+        # save_output_file for intermediate artifacts.
+        workspace_root: _Path | None = None
+        if files or workdir or (has_relative_workspace_ref and workspace_key in self._skill_workspaces):
+            existing_workspace = self._skill_workspaces.get(workspace_key)
+            if existing_workspace:
+                workspace_root = _Path(existing_workspace).resolve()
+            else:
+                workspace_root = (
+                    _Path(settings.STORAGE_ROOT)
+                    / "runs"
+                    / str(self._user_id or "anon")
+                    / _uuid.uuid4().hex[:12]
+                    / "work"
+                ).resolve()
+                self._skill_workspaces[workspace_key] = str(workspace_root)
+            workspace_root.mkdir(parents=True, exist_ok=True)
+
+        def _safe_workspace_path(rel: str, *, allow_missing: bool = True) -> _Path:
+            if workspace_root is None:
+                raise ValueError("workspace is not initialized")
+            rel_text = str(rel or "").strip()
+            if not rel_text:
+                raise ValueError("workspace path is empty")
+            rel_path = _Path(rel_text)
+            if rel_path.is_absolute() or any(part == ".." for part in rel_path.parts):
+                raise ValueError(f"unsafe workspace path: {rel_text}")
+            resolved = (workspace_root / rel_path).resolve()
+            try:
+                resolved.relative_to(workspace_root)
+            except ValueError as exc:
+                raise ValueError(f"workspace path escape rejected: {rel_text}") from exc
+            if not allow_missing and not resolved.exists():
+                raise FileNotFoundError(f"workspace path does not exist: {rel_text}")
+            return resolved
+
+        written_files: list[str] = []
+        if files:
+            if isinstance(files, dict):
+                files = [{"path": name, "content": content} for name, content in files.items()]
+            if not isinstance(files, list):
+                return {"error": "files must be an array/dict of workspace file payloads"}
+            if len(files) > 300:
+                return {"error": "too many workspace files (>300)"}
+            total_bytes = 0
+            try:
+                for item in files:
+                    if not isinstance(item, dict):
+                        return {"error": "each files item must be an object"}
+                    rel_path = str(item.get("path") or item.get("filename") or item.get("name") or "")
+                    if workdir and rel_path and not _Path(rel_path).is_absolute() and not rel_path.startswith(str(workdir).rstrip("/") + "/"):
+                        first_part = _Path(rel_path).parts[0] if _Path(rel_path).parts else ""
+                        if first_part in {"sources", "src", "input", "inputs"}:
+                            rel_path = f"{str(workdir).rstrip('/')}/{rel_path}"
+                    content = item.get("content")
+                    if content is None:
+                        content = item.get("html")
+                    if content is None:
+                        content = item.get("text")
+                    encoding = str(item.get("encoding") or "utf-8").lower()
+                    if content is None:
+                        return {"error": f"workspace file missing content: {rel_path}"}
+                    dest = _safe_workspace_path(rel_path)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    if encoding == "base64":
+                        data = _base64.b64decode(str(content))
+                        dest.write_bytes(data)
+                        total_bytes += len(data)
+                    elif encoding in ("utf-8", "utf8", "text"):
+                        text = str(content)
+                        total_bytes += len(text.encode("utf-8"))
+                        dest.write_text(text, encoding="utf-8")
+                    else:
+                        return {"error": f"unsupported workspace file encoding: {encoding}"}
+                    if total_bytes > 25 * 1024 * 1024:
+                        return {"error": "workspace files too large (>25MB)"}
+                    written_files.append(str(dest.relative_to(workspace_root)))
+            except Exception as e:  # noqa: BLE001
+                return {"error": f"failed to prepare workspace files: {e}"}
+
+        if workspace_root is not None:
+            call_kwargs.setdefault("workspace", str(workspace_root))
+            call_kwargs.setdefault("workspace_dir", str(workspace_root))
+            if workdir:
+                try:
+                    resolved_workdir = _safe_workspace_path(workdir)
+                except Exception as e:  # noqa: BLE001
+                    return {"error": f"invalid workdir: {e}"}
+                call_kwargs.setdefault("workdir", str(resolved_workdir))
+                call_kwargs.setdefault("cwd", str(resolved_workdir))
+
+            # Rewrite common input path kwargs from workspace-relative to absolute
+            # paths so existing scripts such as merge_deck.py can consume them
+            # without depending on process-wide chdir.
+            path_like_keys = {
+                "deck",
+                "deck_folder",
+                "folder",
+                "input",
+                "input_file",
+                "input_path",
+                "source",
+                "source_file",
+                "source_path",
+                "target",
+                "target_file",
+                "target_path",
+            }
+            for key, value in list(call_kwargs.items()):
+                if key in {"output", "output_path", "out", "outfile"}:
+                    continue
+                if key not in path_like_keys or not isinstance(value, str):
+                    continue
+                value_text = value.strip()
+                if not value_text or "://" in value_text or _Path(value_text).is_absolute():
+                    continue
+                try:
+                    call_kwargs[key] = str(_safe_workspace_path(value_text))
+                except Exception as e:  # noqa: BLE001
+                    return {"error": f"invalid workspace path for kwarg {key}: {e}"}
+
         for k in ("output", "output_path", "out", "outfile"):
             call_kwargs.setdefault(k, str(target_path))
 
@@ -1212,9 +1474,13 @@ class AgentRunner:
             except Exception as e:  # noqa: BLE001
                 return {"error": f"script import failed: {e}"}
             fn = getattr(mod, "generate", None)
+            fn_name = "generate"
             if not callable(fn):
-                return {"error": "script must define a callable `generate(**kwargs)`"}
-            # Filter kwargs to only those accepted by `generate`
+                fn = getattr(mod, "run", None)
+                fn_name = "run"
+            if not callable(fn):
+                return {"error": "script must define a callable `generate(**kwargs)` or `run(**kwargs)`"}
+            # Filter kwargs to only those accepted by the chosen callable.
             try:
                 sig = _inspect.signature(fn)
                 if not any(p.kind == _inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
@@ -1229,7 +1495,7 @@ class AgentRunner:
                 else:
                     result = await _asyncio.to_thread(lambda: fn(**accepted))
             except TypeError as e:
-                return {"error": f"argument mismatch: {e}", "expected_kwargs": list(sig.parameters.keys()) if 'sig' in dir() else None}
+                return {"error": f"argument mismatch calling {fn_name}: {e}", "expected_kwargs": list(sig.parameters.keys()) if 'sig' in dir() else None}
             except Exception as e:  # noqa: BLE001
                 return {"error": f"script execution failed: {e}"}
         finally:
@@ -1238,14 +1504,46 @@ class AgentRunner:
             except ValueError:
                 pass
 
-        # Resolve which path actually got the output
+        # Resolve which path actually got the output. Some skills return a path
+        # string, some write to the injected output path, and newer scripts may
+        # return a dict such as {"output_path": "..."} or {"html_path": "..."}.
         produced: _Path | None = None
         if isinstance(result, str) and _Path(result).exists():
             produced = _Path(result).resolve()
+        elif isinstance(result, dict):
+            candidate_values = [
+                result.get("output"),
+                result.get("output_path"),
+                result.get("html_path"),
+                result.get("path"),
+            ]
+            file_info = result.get("file")
+            if isinstance(file_info, dict):
+                candidate_values.extend([
+                    file_info.get("path"),
+                    file_info.get("output_path"),
+                    file_info.get("html_path"),
+                ])
+            for value in candidate_values:
+                if isinstance(value, str) and _Path(value).exists():
+                    produced = _Path(value).resolve()
+                    break
         elif target_path.exists():
             produced = target_path
 
         if produced is None or not produced.exists():
+            if isinstance(result, dict) and result.get("ok"):
+                return {
+                    "ok": True,
+                    "result": result,
+                    "message": "脚本执行成功,未生成下载文件。",
+                }
+            if result is not None and not isinstance(result, str):
+                return {
+                    "ok": True,
+                    "result": result,
+                    "message": "脚本执行成功,返回了结构化结果。",
+                }
             return {"error": "script ran but no output file produced"}
 
         # If script wrote elsewhere (e.g. inside skill dir), move/copy to target_path
@@ -1280,6 +1578,9 @@ class AgentRunner:
         }
         if output_path:
             info["output_path"] = output_path
+        if workspace_root is not None:
+            info["workspace"] = str(workspace_root)
+            info["workspace_files"] = written_files
         self._saved_files.append(info)
         return {"ok": True, "file": info, "message": f"已生成 {safe} ({size} bytes)。前端会显示文件卡片。"}
 
