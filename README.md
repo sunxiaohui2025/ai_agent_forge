@@ -1,13 +1,21 @@
 # Agent Forge 智能体平台
 
-基于 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) 深度开发的下一代智能体应用平台。我们致力于解决政府与企业在严苛内网环境下使用 AI 的核心痛点，内网没法安全使用智能体（类OpenClaw架构）的困境，通过 SaaS 化架构 实现安全、私有且高效的智能体部署。
-- 本项目平台架构可以实现插件化的业务安装和多智能体的构建和分发，只需要分钟时间就可以完成专业的智能体开发。真正实现技术和业务的分离，让业务驱动架构。
-- 同时创新性的实现了类似Claude官网的的UI动态渲染加载技术，可以看懂整个图的渲染不过，不用长时间等待。
-- 一套后台,支持多个智能体,管理员配置、普通用户使用,提供完整的 Skill / MCP / 模型 / 文件 / 安全 / 审计 闭环。
+基于 [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) 深度开发的下一代智能体应用平台。我们致力于解决政府与企业在严苛内网环境下使用 AI 的核心痛点——内网无法安全使用智能体（类 OpenClaw 架构）的困境，通过 **SaaS 服务端** 与 **桌面端单机** 双形态，实现安全、私有且高效的智能体部署。
 
-- **后端**:FastAPI · SQLAlchemy 2.0 (async) · PostgreSQL · Claude Agent SDK · OpenAI Python SDK
-- **前端**:Vue 3 · Vite · TypeScript · Pinia · Element Plus
-- **AI 解析**:[MinerU](https://mineru.net) 云端/私有化双模式 + 本地 Python 库 fallback
+- **插件化业务装配**：平台支持插件化的业务安装与多智能体的构建、分发，只需几分钟即可完成一个专业智能体的搭建，真正实现技术与业务分离，让业务驱动架构。
+- **动态 UI 流式渲染**：创新性地实现了类似 Claude 官网的 UI 动态渲染加载技术，生成图表 / 网页 / 表单的过程实时可见，无需长时间空等。
+- **一套后台、双形态运行**：
+  - **服务端模式**（PostgreSQL）：多用户 + RBAC 三角色，管理员配置、普通用户使用，提供完整的 Skill / MCP / 模型 / 文件 / 安全 / 审计闭环。
+  - **桌面端模式**（Electron + SQLite 单用户）：开箱即用、数据全部留在本机（`~/.h3c-agent`），无需登录，适合个人与内网离线场景。
+- **自动化与多渠道**：内置定时任务（自动化）、远程桥接（飞书 App 直接操控智能体）、连接应用（CLI 工具接入）、工作空间（本地目录读写）等能力。
+
+技术栈：
+
+- **后端**：FastAPI · SQLAlchemy 2.0 (async) · PostgreSQL / SQLite 双驱动 · Claude Agent SDK · OpenAI Python SDK
+- **前端**：Vue 3 · Vite · TypeScript · Pinia · Element Plus
+- **桌面端**：Electron（Python 后端作为 sidecar 进程，稳定端口 47900）
+- **AI 解析**：[MinerU](https://mineru.net) 云端 / 私有化双模式 + 本地 Python 库 fallback
+- **多渠道桥接**：飞书长连接（[lark-oapi](https://github.com/larksuite/oapi-sdk-python)，仅需 App ID/Secret，无需公网回调）
 
 ---
 ## 系统预览图：
@@ -29,14 +37,19 @@
 | **模型管理** | Anthropic / DeepSeek / Qwen / GLM / OpenAI / 任意 OpenAI 兼容,API Key Fernet 加密存储,extra_params 透传(如关思考),一键测试 |
 | **Skill 仓库** | path 型(SKILL.md 包)/ composite(YAML DAG)/ callable(Python 函数)三种类型;ZIP 包上传 + 静态扫描;在线浏览文件树 + Markdown 在线编辑保存;按 Agent 文件级隔离(per-agent .claude/skills/ 沙箱);跨路径调度(`save_output_file` / `_read_skill_file` / `run_skill_script`) |
 | **MCP 连接器** | stdio / SSE / Streamable-HTTP 三种 transport;管理端实时连接 + 列举工具 + 输入 schema 展示;按 Agent 隔离;运行时按需注入 |
-| **聊天与流式** | 多会话 + 历史持久化 + 多轮上下文(默认 30 条)+ 真·token-by-token 流式(Claude Agent SDK partial messages);思考过程独立 thinking 卡片(支持 DeepSeek-Reasoner reasoning_content);工具/MCP/Skill 调用步骤卡片实时展示 |
-| **文件上传与解析** | 用户在对话框上传(per-user 物理隔离)→ 异步解析 → MinerU 云端/私有化 → 失败回退本地库(pypdf/python-docx/openpyxl/bs4)→ Markdown 注入 prompt;支持多次引用、解析中可见状态、失败可重试 |
+| **聊天与流式** | 多会话 + 历史持久化 + 多轮上下文(默认 30 条)+ 真·token-by-token 流式(Claude Agent SDK partial messages);思考过程独立 thinking 卡片(支持 DeepSeek-Reasoner reasoning_content);工具/MCP/Skill 调用步骤卡片实时展示;对话框可临时挂载「技能」与「连接应用」 |
+| **定时任务(自动化)** | cron / 一次性 / 手动触发;每任务独立调度协程 + 并发策略(skip);运行产物落库成可回看会话;超时强制中断 + 启动自动回收孤儿运行;成功/失败可邮件 + 站内通知 |
+| **远程桥接** | 飞书长连接(WebSocket)接入,仅需 App ID/Secret,**无需公网地址、无需回调 URL**;在飞书 App 里直接与本地智能体多轮对话;每会话绑定持久 Conversation;密钥 Fernet 加密 |
+| **连接应用(CLI Apps)** | 把本地命令行工具(如 Claude Code 等)接入智能体,在进程内以 MCP 形式调用;一键安装检测 + 启停;对话框可临时连接 |
+| **工作空间** | 选择本地目录作为智能体读写沙箱(任务模式);按目录配置权限模式(询问/自动/全权) |
+| **文件上传与解析** | 用户在对话框上传(per-user 物理隔离)→ 异步解析 → MinerU 云端/私有化 → 失败回退本地库(pypdf/python-docx/openpyxl/bs4)→ Markdown 注入 prompt;支持多次引用、解析中可见状态、失败可重试;支持原始文件直传(不解析) |
 | **文件预览与下载** | 类 Gemini Canvas 右侧分屏;HTML / PDF / Markdown / SVG / 图片 / 文本代码 在线预览;Word / PPT / Excel 仅下载;一次性 token URL,跨用户/过期/路径穿越全 block;Skill 产物自动登记下载链接 |
+| **收藏与通知** | 收藏问答(含产物快照);站内通知中心(任务结果等) |
 | **生成式 UI** | Skill 输出嵌入式 Widget 渲染(向智能体回拨消息);右侧分屏可拖动尺寸 |
 | **安全加固** | Anthropic 路径默认禁 Bash/Write/Edit;system_prompt 注入安全规则;输入正则过滤(injection / shell);Skill 上传静态扫描(AST 级危险 import 黑名单);文件级 cwd 沙箱(per-agent symlink);所有 admin / 工具调用 / 文件 操作埋点审计 |
 | **审计与日志** | `call_logs`(token/延迟/状态)+ `audit_logs`(管理操作 / 安全拦截 / 文件下载)双表,管理端筛选查询 |
 | **生命周期** | 文件 30 天未引用自动清理;Conversation 删除级联消息;UploadedFile last_used_at 跟踪 |
-| **生产部署** | Docker Compose 一键起 db/api/web;`storage/` 卷持久化 |
+| **部署形态** | 服务端:Docker Compose 一键起 db/api/web,`storage/` 卷持久化;桌面端:Electron 打包,后端 sidecar + SQLite,数据全在 `~/.h3c-agent` |
 
 ---
 
@@ -51,6 +64,11 @@ h3c-agent/
 │   │   │   ├── chat.py                  会话 / 消息 / SSE 流式
 │   │   │   ├── files.py                 上传 / 异步解析 / 状态查询 / 重试 / raw 直链
 │   │   │   ├── downloads.py             token URL 下载(Skill 产物)
+│   │   │   ├── tasks.py                 定时任务(自动化)+ 运行历史 / 手动触发 / 取消
+│   │   │   ├── bridge.py                远程桥接渠道配置(飞书等)
+│   │   │   ├── workspaces.py            工作空间(本地目录沙箱)
+│   │   │   ├── favorites.py             收藏问答
+│   │   │   ├── notifications.py         站内通知
 │   │   │   └── admin/
 │   │   │       ├── users.py             用户 + 角色 CRUD
 │   │   │       ├── departments.py       部门树
@@ -58,39 +76,52 @@ h3c-agent/
 │   │   │       ├── mcp.py               MCP 连接器 + 工具列表
 │   │   │       ├── skills.py            Skill ZIP 上传 / 文件树 / 在线编辑 / 静态扫描
 │   │   │       ├── agents.py            Agent 配置 (含上传策略)
+│   │   │       ├── packs.py             方案包(Solution Pack)
+│   │   │       ├── cli_apps.py          连接应用(CLI 工具)
+│   │   │       ├── approvals.py         审批流
 │   │   │       └── logs.py              call/audit 日志
 │   │   ├── core/
-│   │   │   ├── config.py                env 配置(MinerU / JWT / 上传等)
-│   │   │   ├── crypto.py                Fernet 加密(API Key)
+│   │   │   ├── config.py                env 配置(SQLite/PG 双驱动 / MinerU / JWT / 上传等)
+│   │   │   ├── crypto.py                Fernet 加密(API Key / 渠道密钥)
 │   │   │   ├── security.py              JWT / bcrypt
 │   │   │   └── security_rules.py        SAFETY_PREFIX + 输入过滤正则
 │   │   ├── runtime/
-│   │   │   ├── agent_runner.py          双路径流式(Anthropic SDK + OpenAI 兼容);Skill/MCP/file 编排;widget 协议;tool-use 状态卡
+│   │   │   ├── agent_runner.py          双路径流式(Anthropic SDK + OpenAI 兼容);Skill/MCP/file 编排;widget 协议;tool-use 状态卡;MCP 调用硬超时
 │   │   │   ├── skill_loader.py          composite YAML 校验 + DAG 拓扑
 │   │   │   ├── dag_executor.py          DAG 并行执行 + 模板变量
-│   │   │   ├── mcp_manager.py           MCP 客户端工厂
+│   │   │   ├── mcp_manager.py           MCP 客户端工厂(stdio/SSE/HTTP)
+│   │   │   ├── cli_apps_catalog.py      连接应用静态目录
+│   │   │   ├── cli_apps_mcp.py          进程内 CLI MCP 适配
 │   │   │   └── widget_guidelines.py     生成式 UI 指南
 │   │   ├── services/
 │   │   │   ├── audit.py                 审计辅助
-│   │   │   ├── downloads.py             下载令牌登记 / 校验
+│   │   │   ├── downloads.py             下载令牌登记 / 校验(tz-safe)
 │   │   │   ├── file_cleanup.py          30 天 orphan 清理(后台 task)
 │   │   │   ├── file_parser.py           解析路由(text / MinerU / 本地库)
 │   │   │   ├── mineru_client.py         MinerU 云端/本地双模式
+│   │   │   ├── task_runner.py           任务调度协程 + 执行 + 孤儿运行回收 + 通知
+│   │   │   ├── bridge_manager.py        飞书长连接中继(WebSocket → AgentRunner)
+│   │   │   ├── capability_summarizer.py Skill/MCP 能力中文摘要
+│   │   │   ├── mailer.py                SMTP 邮件通知
 │   │   │   └── skill_scan.py            shell + Python AST 扫描
 │   │   ├── db/
-│   │   │   ├── models.py                14+ 表
-│   │   │   └── init_db.py               幂等迁移 + 默认 admin
+│   │   │   ├── models.py                20+ 表
+│   │   │   └── session.py               async engine(SQLite/PG)+ Base
 │   │   ├── schemas/                     Pydantic
-│   │   ├── deps.py                      JWT 依赖 + 角色守卫
-│   │   └── main.py                      入口 + lifespan(挂载清理任务)
+│   │   ├── deps.py                      JWT 依赖 + 角色守卫(桌面单用户回落 id=1)
+│   │   └── main.py                      入口 + lifespan(迁移 / 种子 / 清理 / 调度 / 桥接)
 │   ├── pyproject.toml
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
 │   │   ├── views/
-│   │   │   ├── chat/Chat.vue            对话页(50/50 分屏 / 思考块 / 步骤卡 / 文件 chip / 预览面板)
-│   │   │   ├── admin/                   8 个管理页
-│   │   │   ├── Layout.vue               左侧 NavigationRail + Topbar
+│   │   │   ├── chat/Chat.vue            对话页(50/50 分屏 / 思考块 / 步骤卡 / 文件 chip / 技能·连接应用 picker / 预览面板)
+│   │   │   ├── tasks/                   定时任务列表 + 运行历史
+│   │   │   ├── space/                   工作空间
+│   │   │   ├── settings/                设置(通用 / 远程桥接 / 用量 / 关于 等)
+│   │   │   ├── admin/                   管理页(用户/角色/部门/模型/MCP/技能/Agent/方案包/连接应用/审批/日志)
+│   │   │   ├── Plugins.vue              插件中心(技能 / MCP / 连接应用 三 Tab)
+│   │   │   ├── Layout.vue / DesktopLayout.vue   服务端 / 桌面端布局
 │   │   │   └── Login.vue                Glassmorphism 登录页
 │   │   ├── components/
 │   │   │   ├── FileCard.vue             文件卡片(下载 / 预览)
@@ -102,6 +133,7 @@ h3c-agent/
 │   │   └── styles.css                   Material 3 token + Google 蓝/红/黄/绿
 │   ├── vite.config.ts                   含 SSE 反代禁缓冲
 │   └── Dockerfile
+├── desktop/                            Electron 桌面端(main.js sidecar + preload + 打包配置)
 ├── storage/
 │   ├── uploads/<user_id>/               用户上传(物理隔离)
 │   ├── outputs/<user_id>/               Skill / 工具产物
@@ -130,9 +162,11 @@ h3c-agent/
 
 **OpenAI 兼容路径**(provider=deepseek/qwen/glm/openai/openai-compatible)
 - `/v1/chat/completions` stream + `tool_calls`
-- 多轮 function-calling 循环(MAX 8 轮)
+- 多轮 function-calling 循环(默认 15 轮,按 Agent 的 `max_turns` 配置)
 - DeepSeek-Reasoner `reasoning_content` 自动回传
 - MCP / Skill 都翻译成 OpenAI function tools,运行时路由
+- 工具参数自动修复:模型偶尔吐出非法 JSON(长正文未转义)时,会重新规范化后再回传,避免网关 400
+- MCP 调用全程硬超时(枚举 20s / 调用 90s),慢渠道不会把会话或任务挂死
 
 ### 3.3 Skill 三态
 
@@ -191,6 +225,34 @@ PDF/DOCX/PPTX/XLSX/PNG/JPG → MinerU(云端/私有化)→ 失败回退本地库
 | `call_logs` | 每次对话:token in/out / 延迟 / 状态 / 错误 / 模型 |
 
 管理端日志页支持按用户 / Agent 筛选 + 翻页 + 详情 JSON 展开。
+
+### 3.8 定时任务(自动化)
+
+- 调度类型:`cron`(标准 5 段表达式)/ `once`(一次性)/ `manual`(手动触发)
+- 每个启用任务一个独立 asyncio 协程,sleep 到下次触发时间;不依赖 apscheduler
+- 并发策略 `skip`:上次还在 running 时跳过本次,避免叠加
+- 每次运行新建一个 `[任务] xxx` 会话,产物落库成可回看的对话(含 thinking / 工具轨迹 / 文件)
+- `max_runtime_seconds` 超时强制中断 → 标记 `timeout`
+- **孤儿运行回收**:进程重启后,启动时自动把残留的 `running`/`pending` 运行收尾为 `failed`,避免任务被 skip 策略永久卡死
+- 结果通过站内通知 / 邮件推送(可配 `notify_on=always/success/failure`)
+
+### 3.9 远程桥接(飞书)
+
+- 走飞书**长连接(WebSocket)**:只填 App ID / App Secret,**无需公网地址、无需回调 URL、无需 verification_token / encrypt_key**
+- lark-oapi ws 客户端在守护线程内运行,入站消息经 `run_coroutine_threadsafe` 交回主事件循环执行 AgentRunner,再用 REST 回复
+- 每个外部会话绑定一个持久本地 Conversation,多轮上下文延续
+- 渠道密钥 Fernet 加密存库;保存即热重载连接,状态(已连接/错误)实时写回
+
+### 3.10 连接应用(CLI Apps)
+
+- 把本地命令行工具(如 Claude Code 等)接入智能体,在**进程内**以 MCP 形式暴露,无需独立 MCP server
+- 静态目录(`runtime/cli_apps_catalog.py`)+ 安装检测 + 启停;对话框可临时连接,仅本轮生效
+
+### 3.11 桌面端单机模式
+
+- Electron 主进程拉起 Python 后端作为 sidecar(稳定端口 47900),等待 `/api/health` 后加载前端
+- 数据库默认 SQLite(`~/.h3c-agent/app.db`),storage 同目录;无登录,单机用户回落为 id=1
+- 启动时幂等建表 + 种子(默认管理员 / 默认专家 / 内置模型),开箱即用
 
 ---
 
@@ -264,8 +326,11 @@ docker compose restart api                 # 重启后端
 
 ### 4.3 本地开发（无 Docker）
 
+> 后端默认使用 **SQLite**（`~/.h3c-agent/app.db`，启动时自动建表 + 种子数据），本地开发无需安装 PostgreSQL。
+> 若要复刻服务端 PostgreSQL 环境，在 `backend/.env` 里设置 `DATABASE_URL` 即可。
+
 ```bash
-# 1. 启动 PostgreSQL（用 Docker 快速拉起）
+# 1.（可选）启动 PostgreSQL —— 仅当你想用 PG 而非默认 SQLite 时
 docker run -d --name h3c-pg -p 5432:5432 \
   -e POSTGRES_USER=h3c -e POSTGRES_PASSWORD=h3c -e POSTGRES_DB=h3c_agent \
   postgres:16
@@ -273,9 +338,10 @@ docker run -d --name h3c-pg -p 5432:5432 \
 # 2. 后端
 cd backend
 python -m venv .venv && source .venv/bin/activate
-cp ../.env.example backend/.env   # 编辑 backend/.env：改 DATABASE_URL 为 localhost 地址，填入 JWT_SECRET / ENCRYPTION_KEY / MINERU_API_KEY
+cp ../.env.example backend/.env   # 填入 JWT_SECRET / ENCRYPTION_KEY / MINERU_API_KEY；用 PG 时再设 DATABASE_URL
 pip install -e .
-python -m app.db.init_db      # 建表 + 创建默认 admin
+# SQLite 模式：表会在首次启动时自动创建，无需手动迁移
+# PostgreSQL 模式：python -m app.db.init_db   # 建表 + 创建默认 admin
 
 # 3. 前端
 cd ../frontend
@@ -290,6 +356,17 @@ cd ..
 tail -f /tmp/agent-forge-backend.log
 tail -f /tmp/agent-forge-frontend.log
 ```
+
+### 4.3.1 桌面端（Electron）开发
+
+```bash
+# 前置：后端依赖已装好（见 4.3），前端已 npm install
+cd desktop
+npm install
+npm run dev        # 拉起 Python sidecar(端口 47900) + Vite + Electron 窗口
+```
+
+桌面端数据全部保存在 `~/.h3c-agent`（SQLite + storage），无需登录。打包构建见 `desktop/BUILD.md`。
 
 ---
 
@@ -384,6 +461,22 @@ POST   /api/files/{id}/reparse                      重试解析
 DELETE /api/files/{id}                              删除
 GET    /api/files/{id}/raw                          原始文件流(支持 ?t= 直链)
 GET    /api/downloads/{token}                       Skill 产物下载(token URL)
+
+GET    /api/tasks                                   定时任务列表
+POST   /api/tasks                                   新建任务
+PATCH  /api/tasks/{id}                              编辑
+POST   /api/tasks/{id}/run                          手动触发一次
+POST   /api/tasks/{id}/toggle                       启用 / 停用
+GET    /api/tasks/{id}/runs                         运行历史
+POST   /api/task-runs/{rid}/cancel                  取消运行
+
+GET    /api/bridge/channels                         远程桥接渠道(飞书等)
+PUT    /api/bridge/channels/{ch}                    保存渠道配置(热重载)
+POST   /api/bridge/channels/{ch}/test               检查连接状态
+
+GET    /api/workspaces                              工作空间(本地目录)
+GET    /api/favorites                               收藏问答
+GET    /api/notifications                           站内通知
 ```
 
 ### 管理端(`/api/admin/`)
@@ -394,6 +487,9 @@ models                                              # 模型 + /test
 mcp              + /{id}/ping  + /{id}/tools        # MCP
 skills           + /upload  + /{id}/files  + /{id}/file (PUT 在线编辑)
 agents
+packs                                               # 方案包(Solution Pack)
+cli-apps         + /catalog                         # 连接应用
+approvals                                           # 审批流
 logs/calls       logs/audit                         # 双日志
 ```
 
@@ -419,14 +515,25 @@ roles, users, departments
 role_agent_grants                    用户角色 → Agent 可见
 
 models                               provider + api_key_enc + extra_params
-mcp_connectors
+mcp_connectors                       transport + config_json + 工具摘要缓存
 skills                               type ∈ {atomic, composite}
+solution_packs                       方案包
+cli_apps                             连接应用(已安装 CLI 工具)
 
-agents                               default_model_id + system_prompt + upload_policy_json
-agent_skills, agent_mcps             多对多
+agents                               default_model_id + system_prompt + upload_policy_json + max_turns + effort
+agent_skills, agent_mcps, agent_packs, agent_cli_apps   多对多
 
-conversations                        user × agent
+conversations                        user × agent (+ workspace_id / permission_mode)
 messages                             content_json(text/thinking/files) + tool_calls_json
+workspaces                           本地目录沙箱 + 权限模式
+favorites                            收藏问答(含 files_json 产物快照)
+notifications                        站内通知
+
+tasks                                定时任务(schedule_type/value + 并发策略 + 通知配置)
+task_runs                            每次运行(status/started/finished/tokens/summary)
+
+channel_configs                      远程桥接渠道(飞书等,config_enc 加密)
+channel_bindings                     外部会话 → 本地 Conversation 绑定
 
 uploaded_files                       parse_status / parsed_markdown / parsed_chars / last_used_at
 download_tokens                      token + expires_at + user_id
@@ -481,27 +588,34 @@ git diff --staged | grep -iE 'password|api[_-]?key|secret|token' | grep -v 'plac
 如果有真值,**立即**:
 1. 不要 push;`git reset HEAD <file>` 把改动撤回工作区,改成从 `.env` 读
 2. 已 push 的话,先去对应服务平台(QQ 邮箱、各 LLM provider、…) **吊销密码 / 轮换 key**,再考虑 `git filter-repo` 重写历史
-- [ ] 检查日志页(管理端)看是否有 `input_filter_blocked` / `skill.upload_blocked` 异常爆点
+3. 检查日志页(管理端)看是否有 `input_filter_blocked` / `skill.upload_blocked` 异常爆点
 
 ---
 
-## 九、版本规划
+## 十、版本规划
 
-**MVP(已完成)**
+**已完成**
 - 双路径流式 / Skill 三态 / MCP 三 transport / MinerU 解析 / 文件预览 / 安全加固 / 审计
+- 桌面端单机模式(Electron + SQLite)
+- 定时任务(自动化)+ 运行历史 + 通知
+- 远程桥接(飞书长连接)
+- 连接应用(CLI Apps)+ 工作空间 + 收藏
 
-**Phase 2**
+**规划中**
 - 子 Agent 委托(主-从架构)
 - 配额 / 成本控制
 - SSO 接入(OIDC / LDAP)
 - S3 / MinIO 文件存储
 - Skill 市场(导出/导入)
 - 流量限速 / 异常告警
+- 更多桥接渠道(QQ / 微信 / 钉钉)
 
 ---
 
-## 十、致谢
+## 十一、致谢
 
 - [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) — 智能体核心
 - [MinerU](https://mineru.net) — 文档解析
 - [Element Plus](https://element-plus.org) — UI 组件
+- [lark-oapi](https://github.com/larksuite/oapi-sdk-python) — 飞书长连接
+# ai_agent_forge_desktop
