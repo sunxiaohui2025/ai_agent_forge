@@ -619,3 +619,4 @@ git diff --staged | grep -iE 'password|api[_-]?key|secret|token' | grep -v 'plac
 - [Element Plus](https://element-plus.org) — UI 组件
 - [lark-oapi](https://github.com/larksuite/oapi-sdk-python) — 飞书长连接
 # ai_agent_forge_desktop
+# ai_agent_forge_desktop
